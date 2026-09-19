@@ -1,352 +1,26 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
-import { useEditorStore, type SelectedPathProps, type PropsEdit } from '../store/editorStore'
+import { useEditorStore, type PropsEdit } from '../store/editorStore'
+import { drawBackground, fitCanvasInView } from '../canvasEngine/background'
+import { findPathById, hitTestPath, findNearestLocation, isTextInputFocused } from '../canvasEngine/hitTest'
+import {
+  type OverlayHit,
+  hitTestOverlay,
+  clearOverlay,
+  drawSelectionHighlight,
+  drawNodeOverlay,
+  computeSelectedPathProps,
+} from '../canvasEngine/overlay'
+import { loadAutosave, saveAutosave, importSvgIntoContent } from '../canvasEngine/svgIO'
 
-const VIEW_PADDING = 40
-const GRID_SIZE = 20
-const GRID_MAJOR_EVERY = 5
-const GRID_MINOR_COLOR = '#2a2b33'
-const GRID_MAJOR_COLOR = '#35363f'
-const RULER_COLOR = '#6b6d78'
-const ARTBOARD_FILL = '#1f2028'
-const ARTBOARD_STROKE = '#35363f'
-
-const SELECT_HIT_TOLERANCE = 6
-const NODE_HIT_TOLERANCE = 7
 const ADD_POINT_TOLERANCE = 12
 const ANCHOR_RADIUS = 4
-const HANDLE_RADIUS = 3
 const ACCENT = '#aa3bff'
-const OVERLAY_LINE = 'rgba(170, 59, 255, 0.6)'
-const ANCHOR_FILL = '#1c1d24'
-const HANDLE_FILL = '#1c1d24'
 const MIN_SEGMENTS = 2
-
-const AUTOSAVE_KEY = 'boring-vectors:autosave'
+const MIN_ZOOM = 0.1
+const MAX_ZOOM = 10
+const ZOOM_WHEEL_SENSITIVITY = 1.0015
 const AUTOSAVE_DEBOUNCE_MS = 500
-
-interface AutosavePayload {
-  svg: string
-  canvasWidth: number
-  canvasHeight: number
-}
-
-function loadAutosave(): AutosavePayload | null {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as AutosavePayload
-  } catch {
-    return null
-  }
-}
-
-function saveAutosave(payload: AutosavePayload) {
-  try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload))
-  } catch {
-    // Storage full or unavailable — autosave is best-effort.
-  }
-}
-
-function drawBackground(
-  layer: paper.Layer,
-  width: number,
-  height: number,
-  showGrid: boolean,
-) {
-  layer.removeChildren()
-
-  new paper.Path.Rectangle({
-    point: [0, 0],
-    size: [width, height],
-    fillColor: ARTBOARD_FILL,
-    strokeColor: ARTBOARD_STROKE,
-    strokeWidth: 1,
-    parent: layer,
-  })
-
-  if (!showGrid) return
-
-  const cols = Math.floor(width / GRID_SIZE)
-  const rows = Math.floor(height / GRID_SIZE)
-
-  for (let c = 0; c <= cols; c++) {
-    const x = c * GRID_SIZE
-    const isMajor = c % GRID_MAJOR_EVERY === 0
-    new paper.Path.Line({
-      from: [x, 0],
-      to: [x, height],
-      strokeColor: isMajor ? GRID_MAJOR_COLOR : GRID_MINOR_COLOR,
-      strokeWidth: isMajor ? 1 : 0.5,
-      parent: layer,
-    })
-  }
-
-  for (let r = 0; r <= rows; r++) {
-    const y = r * GRID_SIZE
-    const isMajor = r % GRID_MAJOR_EVERY === 0
-    new paper.Path.Line({
-      from: [0, y],
-      to: [width, y],
-      strokeColor: isMajor ? GRID_MAJOR_COLOR : GRID_MINOR_COLOR,
-      strokeWidth: isMajor ? 1 : 0.5,
-      parent: layer,
-    })
-  }
-
-  drawRulers(layer, width, height)
-}
-
-function drawRulers(layer: paper.Layer, width: number, height: number) {
-  for (let c = 0; c <= Math.floor(width / GRID_SIZE); c += GRID_MAJOR_EVERY) {
-    const x = c * GRID_SIZE
-    new paper.Path.Line({
-      from: [x, -6],
-      to: [x, 0],
-      strokeColor: RULER_COLOR,
-      strokeWidth: 1,
-      parent: layer,
-    })
-    new paper.PointText({
-      point: [x + 2, -10],
-      content: String(x),
-      fillColor: RULER_COLOR,
-      fontSize: 9,
-      parent: layer,
-    })
-  }
-
-  for (let r = 0; r <= Math.floor(height / GRID_SIZE); r += GRID_MAJOR_EVERY) {
-    const y = r * GRID_SIZE
-    new paper.Path.Line({
-      from: [-6, y],
-      to: [0, y],
-      strokeColor: RULER_COLOR,
-      strokeWidth: 1,
-      parent: layer,
-    })
-    new paper.PointText({
-      point: [-24, y + 3],
-      content: String(y),
-      fillColor: RULER_COLOR,
-      fontSize: 9,
-      parent: layer,
-    })
-  }
-}
-
-function fitCanvasInView(view: paper.View, width: number, height: number) {
-  const scale = Math.min(
-    (view.viewSize.width - VIEW_PADDING * 2) / width,
-    (view.viewSize.height - VIEW_PADDING * 2) / height,
-  )
-  view.zoom = scale > 0 ? scale : 1
-  view.center = new paper.Point(width / 2, height / 2)
-}
-
-function findPathById(contentLayer: paper.Layer, id: string | null): paper.Path | null {
-  if (!id) return null
-  const match = contentLayer.children.find((child) => String(child.id) === id)
-  return match instanceof paper.Path ? match : null
-}
-
-function hitTestPath(contentLayer: paper.Layer, point: paper.Point, zoom: number) {
-  const result = contentLayer.hitTest(point, {
-    fill: true,
-    stroke: true,
-    tolerance: SELECT_HIT_TOLERANCE / zoom,
-  })
-  if (!result) return null
-  const item = result.item
-  return item instanceof paper.Path ? item : null
-}
-
-type OverlayHit =
-  | { type: 'anchor'; segmentIndex: number }
-  | { type: 'handleIn'; segmentIndex: number }
-  | { type: 'handleOut'; segmentIndex: number }
-
-function hitTestOverlay(
-  overlayLayer: paper.Layer,
-  point: paper.Point,
-  zoom: number,
-): OverlayHit | null {
-  const tolerance = NODE_HIT_TOLERANCE / zoom
-  let best: { hit: OverlayHit; dist: number } | null = null
-  for (const child of overlayLayer.children) {
-    const data = child.data as OverlayHit | undefined
-    if (!data) continue
-    const dist = child.position.getDistance(point)
-    if (dist <= tolerance && (!best || dist < best.dist)) {
-      best = { hit: data, dist }
-    }
-  }
-  return best?.hit ?? null
-}
-
-function clearOverlay(overlayLayer: paper.Layer) {
-  overlayLayer.removeChildren()
-}
-
-function drawSelectionHighlight(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
-  new paper.Path.Rectangle({
-    rectangle: path.bounds,
-    strokeColor: ACCENT,
-    strokeWidth: 1 / zoom,
-    dashArray: [4 / zoom, 3 / zoom],
-    parent: overlayLayer,
-  })
-}
-
-function drawNodeOverlay(
-  overlayLayer: paper.Layer,
-  path: paper.Path,
-  zoom: number,
-  selectedSegmentIndex: number | null,
-) {
-  const anchorRadius = ANCHOR_RADIUS / zoom
-  const handleRadius = HANDLE_RADIUS / zoom
-
-  path.segments.forEach((segment, index) => {
-    const isSelected = index === selectedSegmentIndex
-
-    if (!segment.handleIn.isZero()) {
-      const handlePoint = segment.point.add(segment.handleIn)
-      new paper.Path.Line({
-        from: segment.point,
-        to: handlePoint,
-        strokeColor: OVERLAY_LINE,
-        strokeWidth: 1 / zoom,
-        parent: overlayLayer,
-      })
-      const circle = new paper.Path.Circle({
-        center: handlePoint,
-        radius: handleRadius,
-        fillColor: HANDLE_FILL,
-        strokeColor: ACCENT,
-        strokeWidth: 1 / zoom,
-        parent: overlayLayer,
-      })
-      circle.data = { type: 'handleIn', segmentIndex: index } satisfies OverlayHit
-    }
-
-    if (!segment.handleOut.isZero()) {
-      const handlePoint = segment.point.add(segment.handleOut)
-      new paper.Path.Line({
-        from: segment.point,
-        to: handlePoint,
-        strokeColor: OVERLAY_LINE,
-        strokeWidth: 1 / zoom,
-        parent: overlayLayer,
-      })
-      const circle = new paper.Path.Circle({
-        center: handlePoint,
-        radius: handleRadius,
-        fillColor: HANDLE_FILL,
-        strokeColor: ACCENT,
-        strokeWidth: 1 / zoom,
-        parent: overlayLayer,
-      })
-      circle.data = { type: 'handleOut', segmentIndex: index } satisfies OverlayHit
-    }
-
-    const anchor = new paper.Path.Circle({
-      center: segment.point,
-      radius: anchorRadius,
-      fillColor: isSelected ? ACCENT : ANCHOR_FILL,
-      strokeColor: ACCENT,
-      strokeWidth: 1.5 / zoom,
-      parent: overlayLayer,
-    })
-    anchor.data = { type: 'anchor', segmentIndex: index } satisfies OverlayHit
-  })
-}
-
-function findNearestLocation(
-  contentLayer: paper.Layer,
-  point: paper.Point,
-  toleranceProject: number,
-): paper.CurveLocation | null {
-  let best: paper.CurveLocation | null = null
-  let bestDist = Infinity
-  for (const child of contentLayer.children) {
-    if (!(child instanceof paper.Path)) continue
-    const location = child.getNearestLocation(point)
-    if (!location) continue
-    const dist = location.point.getDistance(point)
-    if (dist < bestDist) {
-      bestDist = dist
-      best = location
-    }
-  }
-  return best && bestDist <= toleranceProject ? best : null
-}
-
-function importSvgIntoContent(
-  contentLayer: paper.Layer,
-  svg: string,
-  artboardWidth: number,
-  artboardHeight: number,
-  center: boolean = true,
-): paper.Path | null {
-  const imported = contentLayer.importSVG(svg, { expandShapes: true })
-
-  let paths: paper.Path[]
-  if (imported instanceof paper.Path) {
-    paths = [imported]
-  } else {
-    paths = imported.getItems({ class: paper.Path }) as paper.Path[]
-    for (const path of paths) {
-      path.parent = contentLayer
-    }
-    imported.remove()
-  }
-
-  if (paths.length === 0) return null
-
-  if (center) {
-    let bounds = paths[0].bounds
-    for (const path of paths.slice(1)) {
-      bounds = bounds.unite(path.bounds)
-    }
-    const target = new paper.Point(artboardWidth / 2, artboardHeight / 2)
-    const delta = target.subtract(bounds.center)
-    for (const path of paths) {
-      path.position = path.position.add(delta)
-    }
-  }
-
-  return paths[paths.length - 1]
-}
-
-function computeSelectedPathProps(
-  path: paper.Path,
-  selectedSegmentIndex: number | null,
-): SelectedPathProps {
-  const segment =
-    selectedSegmentIndex !== null ? path.segments[selectedSegmentIndex] : undefined
-
-  return {
-    x: path.bounds.x,
-    y: path.bounds.y,
-    width: path.bounds.width,
-    height: path.bounds.height,
-    node: segment ? { x: segment.point.x, y: segment.point.y } : null,
-    strokeColor: path.strokeColor ? path.strokeColor.toCSS(true) : '#000000',
-    strokeWidth: path.strokeWidth,
-    fillColor: path.fillColor ? path.fillColor.toCSS(true) : null,
-    nodeCount: path.segments.length,
-    closed: path.closed,
-  }
-}
-
-function isTextInputFocused() {
-  const active = document.activeElement
-  if (!active) return false
-  const tag = active.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA'
-}
 
 function PaperCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -517,6 +191,18 @@ function PaperCanvas() {
       redrawOverlay()
     }
 
+    // --- Pan tool (space+drag override, any tool) ---
+    const panTool = new scope.Tool()
+    panTool.onMouseDown = () => {
+      canvas.style.cursor = 'grabbing'
+    }
+    panTool.onMouseDrag = (event: paper.ToolEvent) => {
+      scope.view.center = scope.view.center.subtract(event.delta)
+    }
+    panTool.onMouseUp = () => {
+      canvas.style.cursor = 'grab'
+    }
+
     const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool }
 
     const deleteSelected = () => {
@@ -571,9 +257,28 @@ function PaperCanvas() {
       redrawOverlay()
     }
 
+    let spacePressed = false
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTextInputFocused()) return
       const key = event.key
+
+      if ((event.metaKey || event.ctrlKey) && (key === 'z' || key === 'Z')) {
+        // Intercepted but a no-op — undo/redo is not implemented (per docs/SPEC.md).
+        event.preventDefault()
+        return
+      }
+
+      if (key === ' ') {
+        event.preventDefault()
+        if (!spacePressed) {
+          spacePressed = true
+          scope.activate()
+          panTool.activate()
+          canvas.style.cursor = 'grab'
+        }
+        return
+      }
 
       if (key === 'v' || key === 'V') {
         storeRef.current.setTool('select')
@@ -595,6 +300,38 @@ function PaperCanvas() {
       }
     }
     window.addEventListener('keydown', handleKeyDown)
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === ' ' && spacePressed) {
+        spacePressed = false
+        scope.activate()
+        tools[storeRef.current.tool].activate()
+        canvas.style.cursor = ''
+      }
+    }
+    window.addEventListener('keyup', handleKeyUp)
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      scope.activate()
+      const isZoomModifier = event.ctrlKey || event.metaKey
+      const shouldZoom = storeRef.current.settings.scrollZoomOnly || isZoomModifier
+
+      if (shouldZoom) {
+        const rect = canvas.getBoundingClientRect()
+        const cursor = new paper.Point(event.clientX - rect.left, event.clientY - rect.top)
+        const factor = Math.pow(ZOOM_WHEEL_SENSITIVITY, -event.deltaY)
+        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, scope.view.zoom * factor))
+        const beforePoint = scope.view.viewToProject(cursor)
+        scope.view.zoom = newZoom
+        const afterPoint = scope.view.viewToProject(cursor)
+        scope.view.center = scope.view.center.add(beforePoint.subtract(afterPoint))
+      } else {
+        const delta = new paper.Point(event.deltaX, event.deltaY).divide(scope.view.zoom)
+        scope.view.center = scope.view.center.add(delta)
+      }
+    }
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
 
     const resize = () => {
       scope.activate()
@@ -647,6 +384,8 @@ function PaperCanvas() {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      canvas.removeEventListener('wheel', handleWheel)
       unsubscribeTool()
       scope.project?.remove()
       scopeRef.current = null

@@ -64,6 +64,10 @@ interface EditorState {
   /** Nonce-based signal carrying a PropsPanel edit for PaperCanvas to apply — mirrors deleteRequest/importRequest. */
   propsEditRequest: { edit: PropsEdit; nonce: number } | null
   requestPropsEdit: (edit: PropsEdit) => void
+  settingsModalOpen: boolean
+  openSettingsModal: () => void
+  closeSettingsModal: () => void
+  setScrollZoomOnly: (value: boolean) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -101,4 +105,9 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       propsEditRequest: { edit, nonce: (state.propsEditRequest?.nonce ?? 0) + 1 },
     })),
+  settingsModalOpen: false,
+  openSettingsModal: () => set({ settingsModalOpen: true }),
+  closeSettingsModal: () => set({ settingsModalOpen: false }),
+  setScrollZoomOnly: (value) =>
+    set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
 }))
