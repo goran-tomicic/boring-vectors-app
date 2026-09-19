@@ -7,9 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview",
-    "deploy": "bash scripts/deploy.sh",
-    "deploy:prod": "bash scripts/deploy.sh --prod"
+    "preview": "vite preview"
   },
   "dependencies": {
     "paper": "^0.12.18",
