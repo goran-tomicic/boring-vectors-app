@@ -7,15 +7,27 @@ const TOOLS: { tool: Tool; label: string; title: string }[] = [
   { tool: 'addPoint', label: '+', title: 'Add Point (+)' },
 ]
 
+const MIN_CANVAS_SIZE = 100
+const MAX_CANVAS_SIZE = 4000
+
+function clampCanvasSize(value: number) {
+  if (Number.isNaN(value)) return MIN_CANVAS_SIZE
+  return Math.min(MAX_CANVAS_SIZE, Math.max(MIN_CANVAS_SIZE, value))
+}
+
 function TopBar() {
   const tool = useEditorStore((s) => s.tool)
   const setTool = useEditorStore((s) => s.setTool)
+  const canvasWidth = useEditorStore((s) => s.canvas.width)
+  const canvasHeight = useEditorStore((s) => s.canvas.height)
+  const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
   const gridVisible = useEditorStore((s) => s.canvas.gridVisible)
   const toggleGrid = useEditorStore((s) => s.toggleGrid)
   const selectedPathId = useEditorStore((s) => s.selectedPathId)
   const requestDelete = useEditorStore((s) => s.requestDelete)
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const requestExport = useEditorStore((s) => s.requestExport)
+  const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
 
   return (
     <header className="TopBar">
@@ -35,9 +47,23 @@ function TopBar() {
       </div>
 
       <div className="TopBar-group TopBar-canvasSize">
-        <input type="number" className="TopBar-sizeInput" disabled />
+        <input
+          type="number"
+          className="TopBar-sizeInput"
+          min={MIN_CANVAS_SIZE}
+          max={MAX_CANVAS_SIZE}
+          value={canvasWidth}
+          onChange={(e) => setCanvasSize(clampCanvasSize(Number(e.target.value)), canvasHeight)}
+        />
         <span className="TopBar-sizeTimes">×</span>
-        <input type="number" className="TopBar-sizeInput" disabled />
+        <input
+          type="number"
+          className="TopBar-sizeInput"
+          min={MIN_CANVAS_SIZE}
+          max={MAX_CANVAS_SIZE}
+          value={canvasHeight}
+          onChange={(e) => setCanvasSize(canvasWidth, clampCanvasSize(Number(e.target.value)))}
+        />
       </div>
 
       <div className="TopBar-group TopBar-actions">
@@ -53,7 +79,12 @@ function TopBar() {
         <button type="button" className="TopBar-action" onClick={openImportModal}>
           Import
         </button>
-        <button type="button" className="TopBar-action" onClick={requestExport} title="Copy SVG to clipboard">
+        <button
+          type="button"
+          className="TopBar-action"
+          onClick={requestExport}
+          title="Copy SVG to clipboard"
+        >
           Export
         </button>
         <button
@@ -64,7 +95,7 @@ function TopBar() {
         >
           Delete
         </button>
-        <button type="button" className="TopBar-action" disabled>
+        <button type="button" className="TopBar-action" onClick={openSettingsModal}>
           Settings
         </button>
       </div>
