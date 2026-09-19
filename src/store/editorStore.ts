@@ -39,7 +39,8 @@ interface SettingsState {
 
 interface EditorState {
   tool: Tool
-  selectedPathId: string | null
+  /** Multiple paths can be selected (Select tool: shift-click / marquee); Node tool always treats it as one active path. */
+  selectedPathIds: string[]
   selectedSegmentIndex: number | null
   canvas: CanvasState
   settings: SettingsState
@@ -48,7 +49,8 @@ interface EditorState {
   setCanvasSize: (width: number, height: number) => void
   toggleGrid: () => void
   setStatus: (status: string) => void
-  setSelection: (pathId: string | null, segmentIndex?: number | null) => void
+  /** Replaces the whole selection. */
+  setSelection: (pathIds: string[], segmentIndex?: number | null) => void
   clearSelection: () => void
   /** Incremented to signal a delete-selection request from outside PaperCanvas (e.g. the toolbar). */
   deleteRequest: number
@@ -76,7 +78,7 @@ interface EditorState {
 
 export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
-  selectedPathId: null,
+  selectedPathIds: [],
   selectedSegmentIndex: null,
   canvas: { width: 800, height: 600, gridVisible: true, zoom: 1 },
   settings: { scrollZoomOnly: false },
@@ -89,9 +91,9 @@ export const useEditorStore = create<EditorState>((set) => ({
       canvas: { ...state.canvas, gridVisible: !state.canvas.gridVisible },
     })),
   setStatus: (status) => set({ status }),
-  setSelection: (pathId, segmentIndex = null) =>
-    set({ selectedPathId: pathId, selectedSegmentIndex: segmentIndex }),
-  clearSelection: () => set({ selectedPathId: null, selectedSegmentIndex: null }),
+  setSelection: (pathIds, segmentIndex = null) =>
+    set({ selectedPathIds: pathIds, selectedSegmentIndex: segmentIndex }),
+  clearSelection: () => set({ selectedPathIds: [], selectedSegmentIndex: null }),
   deleteRequest: 0,
   requestDelete: () => set((state) => ({ deleteRequest: state.deleteRequest + 1 })),
   exportRequest: 0,

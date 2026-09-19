@@ -4,6 +4,7 @@ import './PropsPanel.css'
 function PropsPanel() {
   const props = useEditorStore((s) => s.selectedPathProps)
   const requestPropsEdit = useEditorStore((s) => s.requestPropsEdit)
+  const selectedCount = useEditorStore((s) => s.selectedPathIds.length)
 
   const disabled = !props
 
@@ -201,8 +202,14 @@ function PropsPanel() {
       <section className="PropsPanel-section">
         <h3 className="PropsPanel-heading">Path info</h3>
         <div className="PropsPanel-info">
-          <span>Nodes: {props ? props.nodeCount : '—'}</span>
-          <span>Closed: {props ? (props.closed ? 'Yes' : 'No') : '—'}</span>
+          {selectedCount > 1 ? (
+            <span>{selectedCount} paths selected</span>
+          ) : (
+            <>
+              <span>Nodes: {props ? props.nodeCount : '—'}</span>
+              <span>Closed: {props ? (props.closed ? 'Yes' : 'No') : '—'}</span>
+            </>
+          )}
         </div>
       </section>
     </aside>

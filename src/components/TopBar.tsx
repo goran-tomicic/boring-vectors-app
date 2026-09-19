@@ -23,7 +23,7 @@ function TopBar() {
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
   const gridVisible = useEditorStore((s) => s.canvas.gridVisible)
   const toggleGrid = useEditorStore((s) => s.toggleGrid)
-  const selectedPathId = useEditorStore((s) => s.selectedPathId)
+  const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
   const requestDelete = useEditorStore((s) => s.requestDelete)
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const requestExport = useEditorStore((s) => s.requestExport)
@@ -90,7 +90,7 @@ function TopBar() {
         <button
           type="button"
           className="TopBar-action"
-          disabled={!selectedPathId}
+          disabled={selectedPathIds.length === 0}
           onClick={requestDelete}
         >
           Delete

@@ -8,6 +8,12 @@ export function findPathById(contentLayer: paper.Layer, id: string | null): pape
   return match instanceof paper.Path ? match : null
 }
 
+export function findPathsByIds(contentLayer: paper.Layer, ids: string[]): paper.Path[] {
+  return ids
+    .map((id) => findPathById(contentLayer, id))
+    .filter((path): path is paper.Path => path !== null)
+}
+
 export function hitTestPath(contentLayer: paper.Layer, point: paper.Point, zoom: number) {
   const result = contentLayer.hitTest(point, {
     fill: true,
