@@ -9,6 +9,8 @@ export interface SelectedPathProps {
   width: number
   height: number
   node: { x: number; y: number } | null
+  handleIn: { x: number; y: number } | null
+  handleOut: { x: number; y: number } | null
   strokeColor: string
   strokeWidth: number
   fillColor: string | null
@@ -19,6 +21,8 @@ export interface SelectedPathProps {
 export type PropsEdit =
   | { kind: 'position'; x: number; y: number }
   | { kind: 'node'; x: number; y: number }
+  | { kind: 'handleIn'; x: number; y: number }
+  | { kind: 'handleOut'; x: number; y: number }
   | { kind: 'stroke'; color?: string; width?: number }
   | { kind: 'fill'; color: string | null }
 

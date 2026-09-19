@@ -21,6 +21,12 @@
   color: var(--bv-text-faint);
 }
 
+.PropsPanel-subheading {
+  font-size: 11px;
+  color: var(--bv-text-faint);
+  margin: 4px 0;
+}
+
 .PropsPanel-row {
   display: flex;
   align-items: center;
