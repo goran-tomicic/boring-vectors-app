@@ -247,6 +247,19 @@ function PaperCanvas() {
         if (segment) {
           segment.point = new paper.Point(edit.x, edit.y)
         }
+      } else if (edit.kind === 'handleIn' || edit.kind === 'handleOut') {
+        const segment =
+          selectedSegmentIndex !== null ? path.segments[selectedSegmentIndex] : undefined
+        if (segment) {
+          const relative = new paper.Point(edit.x, edit.y).subtract(segment.point)
+          if (edit.kind === 'handleIn') {
+            segment.handleIn = relative
+            segment.handleOut = relative.multiply(-1)
+          } else {
+            segment.handleOut = relative
+            segment.handleIn = relative.multiply(-1)
+          }
+        }
       } else if (edit.kind === 'stroke') {
         if (edit.color !== undefined) path.strokeColor = new paper.Color(edit.color)
         if (edit.width !== undefined) path.strokeWidth = edit.width

@@ -123,6 +123,20 @@ export function computeSelectedPathProps(
     width: path.bounds.width,
     height: path.bounds.height,
     node: segment ? { x: segment.point.x, y: segment.point.y } : null,
+    handleIn:
+      segment && !segment.handleIn.isZero()
+        ? {
+            x: segment.point.x + segment.handleIn.x,
+            y: segment.point.y + segment.handleIn.y,
+          }
+        : null,
+    handleOut:
+      segment && !segment.handleOut.isZero()
+        ? {
+            x: segment.point.x + segment.handleOut.x,
+            y: segment.point.y + segment.handleOut.y,
+          }
+        : null,
     strokeColor: path.strokeColor ? path.strokeColor.toCSS(true) : '#000000',
     strokeWidth: path.strokeWidth,
     fillColor: path.fillColor ? path.fillColor.toCSS(true) : null,

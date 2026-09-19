@@ -65,6 +65,68 @@ function PropsPanel() {
             }}
           />
         </div>
+        <div className="PropsPanel-subheading">Handle in</div>
+        <div className="PropsPanel-row">
+          <label>X</label>
+          <input
+            type="number"
+            value={props?.handleIn ? Math.round(props.handleIn.x) : ''}
+            disabled={!props?.handleIn}
+            onChange={(e) => {
+              if (!props?.handleIn) return
+              requestPropsEdit({
+                kind: 'handleIn',
+                x: Number(e.target.value),
+                y: props.handleIn.y,
+              })
+            }}
+          />
+          <label>Y</label>
+          <input
+            type="number"
+            value={props?.handleIn ? Math.round(props.handleIn.y) : ''}
+            disabled={!props?.handleIn}
+            onChange={(e) => {
+              if (!props?.handleIn) return
+              requestPropsEdit({
+                kind: 'handleIn',
+                x: props.handleIn.x,
+                y: Number(e.target.value),
+              })
+            }}
+          />
+        </div>
+        <div className="PropsPanel-subheading">Handle out</div>
+        <div className="PropsPanel-row">
+          <label>X</label>
+          <input
+            type="number"
+            value={props?.handleOut ? Math.round(props.handleOut.x) : ''}
+            disabled={!props?.handleOut}
+            onChange={(e) => {
+              if (!props?.handleOut) return
+              requestPropsEdit({
+                kind: 'handleOut',
+                x: Number(e.target.value),
+                y: props.handleOut.y,
+              })
+            }}
+          />
+          <label>Y</label>
+          <input
+            type="number"
+            value={props?.handleOut ? Math.round(props.handleOut.y) : ''}
+            disabled={!props?.handleOut}
+            onChange={(e) => {
+              if (!props?.handleOut) return
+              requestPropsEdit({
+                kind: 'handleOut',
+                x: props.handleOut.x,
+                y: Number(e.target.value),
+              })
+            }}
+          />
+        </div>
       </section>
 
       <section className="PropsPanel-section">
