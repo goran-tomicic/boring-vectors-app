@@ -15,6 +15,7 @@ function TopBar() {
   const selectedPathId = useEditorStore((s) => s.selectedPathId)
   const requestDelete = useEditorStore((s) => s.requestDelete)
   const openImportModal = useEditorStore((s) => s.openImportModal)
+  const requestExport = useEditorStore((s) => s.requestExport)
 
   return (
     <header className="TopBar">
@@ -52,7 +53,7 @@ function TopBar() {
         <button type="button" className="TopBar-action" onClick={openImportModal}>
           Import
         </button>
-        <button type="button" className="TopBar-action" disabled>
+        <button type="button" className="TopBar-action" onClick={requestExport} title="Copy SVG to clipboard">
           Export
         </button>
         <button
