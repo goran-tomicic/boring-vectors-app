@@ -2,7 +2,13 @@ import { useEffect, useRef } from 'react'
 import paper from 'paper'
 import { useEditorStore, type PropsEdit } from '../store/editorStore'
 import { drawBackground, fitCanvasInView } from '../canvasEngine/background'
-import { findPathById, hitTestPath, findNearestLocation, isTextInputFocused } from '../canvasEngine/hitTest'
+import {
+  findPathById,
+  findPathsByIds,
+  hitTestPath,
+  findNearestLocation,
+  isTextInputFocused,
+} from '../canvasEngine/hitTest'
 import {
   type OverlayHit,
   hitTestOverlay,
@@ -16,6 +22,7 @@ import { loadAutosave, saveAutosave, importSvgIntoContent } from '../canvasEngin
 const ADD_POINT_TOLERANCE = 12
 const ANCHOR_RADIUS = 4
 const ACCENT = '#aa3bff'
+const MARQUEE_FILL = 'rgba(170, 59, 255, 0.12)'
 const MIN_SEGMENTS = 2
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
@@ -116,44 +123,107 @@ function PaperCanvas() {
     }
 
     const redrawOverlay = () => {
-      const { selectedPathId, selectedSegmentIndex, tool } = storeRef.current
+      const { selectedPathIds, selectedSegmentIndex, tool } = storeRef.current
       scheduleAutosave()
       clearOverlay(overlayLayer)
-      const path = findPathById(contentLayer, selectedPathId)
-      if (!path) {
-        storeRef.current.setSelectedPathProps(null)
-        return
-      }
-      storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
       const zoom = scope.view.zoom
-      if (tool === 'node') {
-        drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
-      } else {
+
+      if (selectedPathIds.length === 1) {
+        const path = findPathById(contentLayer, selectedPathIds[0])
+        if (path) {
+          storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
+          if (tool === 'node') {
+            drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
+          } else {
+            drawSelectionHighlight(overlayLayer, path, zoom)
+          }
+          return
+        }
+      }
+
+      storeRef.current.setSelectedPathProps(null)
+      for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
         drawSelectionHighlight(overlayLayer, path, zoom)
       }
     }
 
     // --- Select tool ---
-    let dragPath: paper.Path | null = null
+    let dragPaths: paper.Path[] = []
+    let marqueeStart: paper.Point | null = null
+    let marqueeAdditive = false
+    let marqueeRect: paper.Path | null = null
     const selectTool = new scope.Tool()
     selectTool.onMouseDown = (event: paper.ToolEvent) => {
       const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
-      dragPath = hit
+      const { selectedPathIds } = storeRef.current
+      marqueeStart = null
+      dragPaths = []
+
       if (hit) {
-        storeRef.current.setSelection(String(hit.id))
+        const hitId = String(hit.id)
+        if (event.modifiers.shift) {
+          const already = selectedPathIds.includes(hitId)
+          storeRef.current.setSelection(
+            already ? selectedPathIds.filter((id) => id !== hitId) : [...selectedPathIds, hitId],
+          )
+        } else if (selectedPathIds.includes(hitId) && selectedPathIds.length > 1) {
+          // Clicking a member of an existing multi-selection drags the whole group.
+          dragPaths = findPathsByIds(contentLayer, selectedPathIds)
+        } else {
+          storeRef.current.setSelection([hitId])
+          dragPaths = [hit]
+        }
+      } else if (event.modifiers.shift) {
+        marqueeAdditive = true
+        marqueeStart = event.point
       } else {
         storeRef.current.clearSelection()
+        marqueeAdditive = false
+        marqueeStart = event.point
       }
       redrawOverlay()
     }
     selectTool.onMouseDrag = (event: paper.ToolEvent) => {
-      if (!dragPath) return
-      dragPath.position = dragPath.position.add(event.delta)
-      redrawOverlay()
+      if (dragPaths.length > 0) {
+        for (const path of dragPaths) {
+          path.position = path.position.add(event.delta)
+        }
+        redrawOverlay()
+        return
+      }
+      if (marqueeStart) {
+        if (marqueeRect) marqueeRect.remove()
+        marqueeRect = new paper.Path.Rectangle({
+          rectangle: new paper.Rectangle(marqueeStart, event.point),
+          strokeColor: ACCENT,
+          strokeWidth: 1 / scope.view.zoom,
+          fillColor: MARQUEE_FILL,
+          parent: overlayLayer,
+        })
+      }
     }
-    selectTool.onMouseUp = () => {
-      dragPath = null
-      commitHistory()
+    selectTool.onMouseUp = (event: paper.ToolEvent) => {
+      if (dragPaths.length > 0) {
+        dragPaths = []
+        commitHistory()
+        return
+      }
+      if (marqueeStart) {
+        const rect = new paper.Rectangle(marqueeStart, event.point)
+        if (marqueeRect) {
+          marqueeRect.remove()
+          marqueeRect = null
+        }
+        const hitIds = contentLayer.children
+          .filter((child): child is paper.Path => child instanceof paper.Path && rect.intersects(child.bounds))
+          .map((path) => String(path.id))
+        const nextIds = marqueeAdditive
+          ? Array.from(new Set([...storeRef.current.selectedPathIds, ...hitIds]))
+          : hitIds
+        storeRef.current.setSelection(nextIds)
+        marqueeStart = null
+        redrawOverlay()
+      }
     }
 
     // --- Node tool ---
@@ -161,8 +231,9 @@ function PaperCanvas() {
     let nodeDrag: OverlayHit | null = null
     const nodeTool = new scope.Tool()
     nodeTool.onMouseDown = (event: paper.ToolEvent) => {
-      const { selectedPathId } = storeRef.current
-      const activePath = findPathById(contentLayer, selectedPathId)
+      const { selectedPathIds } = storeRef.current
+      const activePath =
+        selectedPathIds.length === 1 ? findPathById(contentLayer, selectedPathIds[0]) : null
 
       if (activePath) {
         const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
@@ -170,7 +241,7 @@ function PaperCanvas() {
           nodeDragPath = activePath
           nodeDrag = overlayHit
           if (overlayHit.type === 'anchor') {
-            storeRef.current.setSelection(String(activePath.id), overlayHit.segmentIndex)
+            storeRef.current.setSelection([String(activePath.id)], overlayHit.segmentIndex)
           }
           redrawOverlay()
           return
@@ -180,7 +251,7 @@ function PaperCanvas() {
       const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
       nodeDragPath = null
       nodeDrag = null
-      storeRef.current.setSelection(hit ? String(hit.id) : null)
+      storeRef.current.setSelection(hit ? [String(hit.id)] : [])
       redrawOverlay()
     }
     nodeTool.onMouseDrag = (event: paper.ToolEvent) => {
@@ -233,7 +304,7 @@ function PaperCanvas() {
       const location = findNearestLocation(contentLayer, event.point, ADD_POINT_TOLERANCE / zoom)
       if (!location || !(location.path instanceof paper.Path)) return
       location.path.divideAt(location)
-      storeRef.current.setSelection(String(location.path.id))
+      storeRef.current.setSelection([String(location.path.id)])
       redrawOverlay()
       commitHistory()
     }
@@ -253,17 +324,18 @@ function PaperCanvas() {
     const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool }
 
     const deleteSelected = () => {
-      const { tool, selectedPathId, selectedSegmentIndex } = storeRef.current
-      const path = findPathById(contentLayer, selectedPathId)
-      if (!path) return
+      const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
 
-      if (tool === 'node' && selectedSegmentIndex !== null) {
-        if (path.segments.length > MIN_SEGMENTS) {
+      if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndex !== null) {
+        const path = findPathById(contentLayer, selectedPathIds[0])
+        if (path && path.segments.length > MIN_SEGMENTS) {
           path.removeSegment(selectedSegmentIndex)
-          storeRef.current.setSelection(String(path.id))
+          storeRef.current.setSelection([String(path.id)])
         }
       } else {
-        path.remove()
+        for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
+          path.remove()
+        }
         storeRef.current.clearSelection()
       }
       redrawOverlay()
@@ -280,8 +352,9 @@ function PaperCanvas() {
     }
 
     const applyPropsEdit = (edit: PropsEdit) => {
-      const { selectedPathId, selectedSegmentIndex } = storeRef.current
-      const path = findPathById(contentLayer, selectedPathId)
+      const { selectedPathIds, selectedSegmentIndex } = storeRef.current
+      if (selectedPathIds.length !== 1) return
+      const path = findPathById(contentLayer, selectedPathIds[0])
       if (!path) return
 
       if (edit.kind === 'position') {
@@ -421,7 +494,7 @@ function PaperCanvas() {
         tools[state.tool].activate()
       }
       if (
-        state.selectedPathId !== prevState.selectedPathId ||
+        state.selectedPathIds !== prevState.selectedPathIds ||
         state.selectedSegmentIndex !== prevState.selectedSegmentIndex ||
         state.tool !== prevState.tool
       ) {
@@ -441,7 +514,7 @@ function PaperCanvas() {
           state.canvas.height,
         )
         if (imported) {
-          storeRef.current.setSelection(String(imported.id))
+          storeRef.current.setSelection([String(imported.id)])
         }
         redrawOverlay()
         commitHistory()
