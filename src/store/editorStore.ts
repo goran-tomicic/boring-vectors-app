@@ -2,6 +2,26 @@ import { create } from 'zustand'
 
 export type Tool = 'select' | 'node' | 'addPoint'
 
+/** Read-only snapshot of the selected path's Paper.js properties, refreshed by PaperCanvas on every selection/geometry change. */
+export interface SelectedPathProps {
+  x: number
+  y: number
+  width: number
+  height: number
+  node: { x: number; y: number } | null
+  strokeColor: string
+  strokeWidth: number
+  fillColor: string | null
+  nodeCount: number
+  closed: boolean
+}
+
+export type PropsEdit =
+  | { kind: 'position'; x: number; y: number }
+  | { kind: 'node'; x: number; y: number }
+  | { kind: 'stroke'; color?: string; width?: number }
+  | { kind: 'fill'; color: string | null }
+
 interface CanvasState {
   width: number
   height: number
@@ -35,6 +55,12 @@ interface EditorState {
   /** Nonce-based signal carrying raw SVG text for PaperCanvas to import — mirrors the deleteRequest pattern. */
   importRequest: { svg: string; nonce: number }
   requestImport: (svg: string) => void
+  /** Read-only; written by PaperCanvas only. */
+  selectedPathProps: SelectedPathProps | null
+  setSelectedPathProps: (props: SelectedPathProps | null) => void
+  /** Nonce-based signal carrying a PropsPanel edit for PaperCanvas to apply — mirrors deleteRequest/importRequest. */
+  propsEditRequest: { edit: PropsEdit; nonce: number } | null
+  requestPropsEdit: (edit: PropsEdit) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -63,4 +89,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   importRequest: { svg: '', nonce: 0 },
   requestImport: (svg) =>
     set((state) => ({ importRequest: { svg, nonce: state.importRequest.nonce + 1 } })),
+  selectedPathProps: null,
+  setSelectedPathProps: (props) => set({ selectedPathProps: props }),
+  propsEditRequest: null,
+  requestPropsEdit: (edit) =>
+    set((state) => ({
+      propsEditRequest: { edit, nonce: (state.propsEditRequest?.nonce ?? 0) + 1 },
+    })),
 }))

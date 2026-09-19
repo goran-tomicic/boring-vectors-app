@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
-import { useEditorStore } from '../store/editorStore'
+import { useEditorStore, type SelectedPathProps, type PropsEdit } from '../store/editorStore'
 
 const VIEW_PADDING = 40
 const GRID_SIZE = 20
@@ -290,6 +290,27 @@ function importSvgIntoContent(
   return paths[paths.length - 1]
 }
 
+function computeSelectedPathProps(
+  path: paper.Path,
+  selectedSegmentIndex: number | null,
+): SelectedPathProps {
+  const segment =
+    selectedSegmentIndex !== null ? path.segments[selectedSegmentIndex] : undefined
+
+  return {
+    x: path.bounds.x,
+    y: path.bounds.y,
+    width: path.bounds.width,
+    height: path.bounds.height,
+    node: segment ? { x: segment.point.x, y: segment.point.y } : null,
+    strokeColor: path.strokeColor ? path.strokeColor.toCSS(true) : '#000000',
+    strokeWidth: path.strokeWidth,
+    fillColor: path.fillColor ? path.fillColor.toCSS(true) : null,
+    nodeCount: path.segments.length,
+    closed: path.closed,
+  }
+}
+
 function isTextInputFocused() {
   const active = document.activeElement
   if (!active) return false
@@ -326,7 +347,11 @@ function PaperCanvas() {
       const { selectedPathId, selectedSegmentIndex, tool } = storeRef.current
       clearOverlay(overlayLayer)
       const path = findPathById(contentLayer, selectedPathId)
-      if (!path) return
+      if (!path) {
+        storeRef.current.setSelectedPathProps(null)
+        return
+      }
+      storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
       const zoom = scope.view.zoom
       if (tool === 'node') {
         drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
@@ -455,6 +480,32 @@ function PaperCanvas() {
       redrawOverlay()
     }
 
+    const applyPropsEdit = (edit: PropsEdit) => {
+      const { selectedPathId, selectedSegmentIndex } = storeRef.current
+      const path = findPathById(contentLayer, selectedPathId)
+      if (!path) return
+
+      if (edit.kind === 'position') {
+        path.bounds = new paper.Rectangle(
+          new paper.Point(edit.x, edit.y),
+          path.bounds.size,
+        )
+      } else if (edit.kind === 'node') {
+        const segment =
+          selectedSegmentIndex !== null ? path.segments[selectedSegmentIndex] : undefined
+        if (segment) {
+          segment.point = new paper.Point(edit.x, edit.y)
+        }
+      } else if (edit.kind === 'stroke') {
+        if (edit.color !== undefined) path.strokeColor = new paper.Color(edit.color)
+        if (edit.width !== undefined) path.strokeWidth = edit.width
+      } else if (edit.kind === 'fill') {
+        path.fillColor = edit.color === null ? null : new paper.Color(edit.color)
+      }
+
+      redrawOverlay()
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTextInputFocused()) return
       const key = event.key
@@ -516,6 +567,10 @@ function PaperCanvas() {
         if (imported) {
           storeRef.current.setSelection(String(imported.id))
         }
+      }
+      if (state.propsEditRequest && state.propsEditRequest.nonce !== prevState.propsEditRequest?.nonce) {
+        scope.activate()
+        applyPropsEdit(state.propsEditRequest.edit)
       }
     })
 
