@@ -1,0 +1,13 @@
+.CanvasWrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bv-canvas-bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.CanvasWrap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}

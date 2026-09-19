@@ -1,0 +1,87 @@
+.ImportModal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.ImportModal {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ImportModal-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bv-text);
+}
+
+.ImportModal-textarea {
+  width: 100%;
+  height: 140px;
+  resize: vertical;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 6px;
+  color: var(--bv-text);
+  padding: 8px;
+  font: 12px/1.4 var(--bv-mono);
+}
+
+.ImportModal-samples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ImportModal-sample {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text-dim);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.ImportModal-sample:hover {
+  color: var(--bv-text);
+  border-color: var(--bv-accent-border);
+}
+
+.ImportModal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ImportModal-cancel,
+.ImportModal-confirm {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--bv-border);
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
+.ImportModal-confirm {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}
+
+.ImportModal-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

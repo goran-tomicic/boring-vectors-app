@@ -1,0 +1,56 @@
+.TopBar {
+  height: var(--bv-topbar-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 12px;
+  background: var(--bv-panel);
+  border-bottom: 1px solid var(--bv-border);
+}
+
+.TopBar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.TopBar-tool,
+.TopBar-action {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--bv-text-dim);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.TopBar-tool:hover,
+.TopBar-action:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
+.TopBar-tool[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}
+
+.TopBar-canvasSize {
+  color: var(--bv-text-faint);
+  font-size: 12px;
+}
+
+.TopBar-sizeInput {
+  width: 56px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 4px 6px;
+}
+
+.TopBar-actions {
+  margin-left: auto;
+}

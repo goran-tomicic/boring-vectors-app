@@ -1,0 +1,66 @@
+import { create } from 'zustand'
+
+export type Tool = 'select' | 'node' | 'addPoint'
+
+interface CanvasState {
+  width: number
+  height: number
+  gridVisible: boolean
+  zoom: number
+}
+
+interface SettingsState {
+  scrollZoomOnly: boolean
+}
+
+interface EditorState {
+  tool: Tool
+  selectedPathId: string | null
+  selectedSegmentIndex: number | null
+  canvas: CanvasState
+  settings: SettingsState
+  status: string
+  setTool: (tool: Tool) => void
+  setCanvasSize: (width: number, height: number) => void
+  toggleGrid: () => void
+  setStatus: (status: string) => void
+  setSelection: (pathId: string | null, segmentIndex?: number | null) => void
+  clearSelection: () => void
+  /** Incremented to signal a delete-selection request from outside PaperCanvas (e.g. the toolbar). */
+  deleteRequest: number
+  requestDelete: () => void
+  importModalOpen: boolean
+  openImportModal: () => void
+  closeImportModal: () => void
+  /** Nonce-based signal carrying raw SVG text for PaperCanvas to import — mirrors the deleteRequest pattern. */
+  importRequest: { svg: string; nonce: number }
+  requestImport: (svg: string) => void
+}
+
+export const useEditorStore = create<EditorState>((set) => ({
+  tool: 'select',
+  selectedPathId: null,
+  selectedSegmentIndex: null,
+  canvas: { width: 800, height: 600, gridVisible: true, zoom: 1 },
+  settings: { scrollZoomOnly: false },
+  status: 'Ready',
+  setTool: (tool) => set({ tool }),
+  setCanvasSize: (width, height) =>
+    set((state) => ({ canvas: { ...state.canvas, width, height } })),
+  toggleGrid: () =>
+    set((state) => ({
+      canvas: { ...state.canvas, gridVisible: !state.canvas.gridVisible },
+    })),
+  setStatus: (status) => set({ status }),
+  setSelection: (pathId, segmentIndex = null) =>
+    set({ selectedPathId: pathId, selectedSegmentIndex: segmentIndex }),
+  clearSelection: () => set({ selectedPathId: null, selectedSegmentIndex: null }),
+  deleteRequest: 0,
+  requestDelete: () => set((state) => ({ deleteRequest: state.deleteRequest + 1 })),
+  importModalOpen: false,
+  openImportModal: () => set({ importModalOpen: true }),
+  closeImportModal: () => set({ importModalOpen: false }),
+  importRequest: { svg: '', nonce: 0 },
+  requestImport: (svg) =>
+    set((state) => ({ importRequest: { svg, nonce: state.importRequest.nonce + 1 } })),
+}))

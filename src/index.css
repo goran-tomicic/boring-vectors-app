@@ -1,0 +1,66 @@
+:root {
+  /* Surfaces */
+  --bv-bg: #16171d;
+  --bv-panel: #1c1d24;
+  --bv-panel-raised: #23242c;
+  --bv-border: #2e303a;
+
+  /* Text */
+  --bv-text: #e6e6ea;
+  --bv-text-dim: #9ca3af;
+  --bv-text-faint: #6b6d78;
+
+  /* Accent */
+  --bv-accent: #aa3bff;
+  --bv-accent-bg: rgba(170, 59, 255, 0.15);
+  --bv-accent-border: rgba(170, 59, 255, 0.5);
+  --bv-accent-text: #d9a8ff;
+
+  /* Canvas */
+  --bv-canvas-bg: #1a1b21;
+  --bv-grid-line: #2a2b33;
+  --bv-grid-line-major: #35363f;
+
+  /* Feedback */
+  --bv-danger: #ff5c5c;
+
+  /* Layout */
+  --bv-topbar-h: 52px;
+  --bv-infobar-h: 28px;
+  --bv-panel-w: 260px;
+
+  --bv-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --bv-mono: ui-monospace, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font: 13px/1.45 var(--bv-sans);
+  color: var(--bv-text);
+  background: var(--bv-bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
