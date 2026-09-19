@@ -49,6 +49,9 @@ interface EditorState {
   /** Incremented to signal a delete-selection request from outside PaperCanvas (e.g. the toolbar). */
   deleteRequest: number
   requestDelete: () => void
+  /** Incremented to signal an export request from outside PaperCanvas (e.g. the toolbar). */
+  exportRequest: number
+  requestExport: () => void
   importModalOpen: boolean
   openImportModal: () => void
   closeImportModal: () => void
@@ -83,6 +86,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   clearSelection: () => set({ selectedPathId: null, selectedSegmentIndex: null }),
   deleteRequest: 0,
   requestDelete: () => set((state) => ({ deleteRequest: state.deleteRequest + 1 })),
+  exportRequest: 0,
+  requestExport: () => set((state) => ({ exportRequest: state.exportRequest + 1 })),
   importModalOpen: false,
   openImportModal: () => set({ importModalOpen: true }),
   closeImportModal: () => set({ importModalOpen: false }),

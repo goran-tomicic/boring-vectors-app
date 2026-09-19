@@ -22,6 +22,33 @@ const ANCHOR_FILL = '#1c1d24'
 const HANDLE_FILL = '#1c1d24'
 const MIN_SEGMENTS = 2
 
+const AUTOSAVE_KEY = 'boring-vectors:autosave'
+const AUTOSAVE_DEBOUNCE_MS = 500
+
+interface AutosavePayload {
+  svg: string
+  canvasWidth: number
+  canvasHeight: number
+}
+
+function loadAutosave(): AutosavePayload | null {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as AutosavePayload
+  } catch {
+    return null
+  }
+}
+
+function saveAutosave(payload: AutosavePayload) {
+  try {
+    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload))
+  } catch {
+    // Storage full or unavailable — autosave is best-effort.
+  }
+}
+
 function drawBackground(
   layer: paper.Layer,
   width: number,
@@ -261,6 +288,7 @@ function importSvgIntoContent(
   svg: string,
   artboardWidth: number,
   artboardHeight: number,
+  center: boolean = true,
 ): paper.Path | null {
   const imported = contentLayer.importSVG(svg, { expandShapes: true })
 
@@ -277,14 +305,16 @@ function importSvgIntoContent(
 
   if (paths.length === 0) return null
 
-  let bounds = paths[0].bounds
-  for (const path of paths.slice(1)) {
-    bounds = bounds.unite(path.bounds)
-  }
-  const target = new paper.Point(artboardWidth / 2, artboardHeight / 2)
-  const delta = target.subtract(bounds.center)
-  for (const path of paths) {
-    path.position = path.position.add(delta)
+  if (center) {
+    let bounds = paths[0].bounds
+    for (const path of paths.slice(1)) {
+      bounds = bounds.unite(path.bounds)
+    }
+    const target = new paper.Point(artboardWidth / 2, artboardHeight / 2)
+    const delta = target.subtract(bounds.center)
+    for (const path of paths) {
+      path.position = path.position.add(delta)
+    }
   }
 
   return paths[paths.length - 1]
@@ -343,8 +373,33 @@ function PaperCanvas() {
     const contentLayer = new scope.Layer({ name: 'content' })
     const overlayLayer = new scope.Layer({ name: 'overlay' })
 
+    const saved = loadAutosave()
+    if (saved) {
+      importSvgIntoContent(contentLayer, saved.svg, saved.canvasWidth, saved.canvasHeight, false)
+      if (
+        saved.canvasWidth !== storeRef.current.canvas.width ||
+        saved.canvasHeight !== storeRef.current.canvas.height
+      ) {
+        storeRef.current.setCanvasSize(saved.canvasWidth, saved.canvasHeight)
+      }
+    }
+
+    let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
+    const scheduleAutosave = () => {
+      if (autosaveTimeout) clearTimeout(autosaveTimeout)
+      autosaveTimeout = setTimeout(() => {
+        const svg = contentLayer.exportSVG({ asString: true }) as string
+        saveAutosave({
+          svg,
+          canvasWidth: storeRef.current.canvas.width,
+          canvasHeight: storeRef.current.canvas.height,
+        })
+      }, AUTOSAVE_DEBOUNCE_MS)
+    }
+
     const redrawOverlay = () => {
       const { selectedPathId, selectedSegmentIndex, tool } = storeRef.current
+      scheduleAutosave()
       clearOverlay(overlayLayer)
       const path = findPathById(contentLayer, selectedPathId)
       if (!path) {
@@ -459,6 +514,7 @@ function PaperCanvas() {
       if (!location || !(location.path instanceof paper.Path)) return
       location.path.divideAt(location)
       storeRef.current.setSelection(String(location.path.id))
+      redrawOverlay()
     }
 
     const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool }
@@ -478,6 +534,15 @@ function PaperCanvas() {
         storeRef.current.clearSelection()
       }
       redrawOverlay()
+    }
+
+    const exportSvg = () => {
+      const svg = contentLayer.exportSVG({ asString: true }) as string
+      navigator.clipboard.writeText(svg).catch(() => {
+        const blob = new Blob([svg], { type: 'image/svg+xml' })
+        const url = URL.createObjectURL(blob)
+        window.open(url, '_blank')
+      })
     }
 
     const applyPropsEdit = (edit: PropsEdit) => {
@@ -572,9 +637,14 @@ function PaperCanvas() {
         scope.activate()
         applyPropsEdit(state.propsEditRequest.edit)
       }
+      if (state.exportRequest !== prevState.exportRequest) {
+        scope.activate()
+        exportSvg()
+      }
     })
 
     return () => {
+      if (autosaveTimeout) clearTimeout(autosaveTimeout)
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', handleKeyDown)
       unsubscribeTool()
