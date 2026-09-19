@@ -21,6 +21,7 @@ const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
 const ZOOM_WHEEL_SENSITIVITY = 1.0015
 const AUTOSAVE_DEBOUNCE_MS = 500
+const MAX_HISTORY = 100
 
 function PaperCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -71,6 +72,49 @@ function PaperCanvas() {
       }, AUTOSAVE_DEBOUNCE_MS)
     }
 
+    // --- Undo/redo history ---
+    // Snapshot-based: each entry is a serialized content-layer SVG, committed
+    // once per finished interaction (mouseUp, delete, import, a props edit) —
+    // not per drag frame, so one undo step matches one user gesture.
+    const snapshotContent = () => contentLayer.exportSVG({ asString: true }) as string
+    const history: string[] = []
+    const future: string[] = []
+    let currentSnapshot = snapshotContent()
+
+    const restoreSnapshot = (svg: string) => {
+      contentLayer.removeChildren()
+      if (svg) {
+        importSvgIntoContent(contentLayer, svg, storeRef.current.canvas.width, storeRef.current.canvas.height, false)
+      }
+      storeRef.current.clearSelection()
+      redrawOverlay()
+    }
+
+    const commitHistory = () => {
+      const snap = snapshotContent()
+      if (snap === currentSnapshot) return
+      history.push(currentSnapshot)
+      if (history.length > MAX_HISTORY) history.shift()
+      currentSnapshot = snap
+      future.length = 0
+    }
+
+    const undo = () => {
+      const prev = history.pop()
+      if (prev === undefined) return
+      future.push(currentSnapshot)
+      currentSnapshot = prev
+      restoreSnapshot(prev)
+    }
+
+    const redo = () => {
+      const next = future.pop()
+      if (next === undefined) return
+      history.push(currentSnapshot)
+      currentSnapshot = next
+      restoreSnapshot(next)
+    }
+
     const redrawOverlay = () => {
       const { selectedPathId, selectedSegmentIndex, tool } = storeRef.current
       scheduleAutosave()
@@ -109,6 +153,7 @@ function PaperCanvas() {
     }
     selectTool.onMouseUp = () => {
       dragPath = null
+      commitHistory()
     }
 
     // --- Node tool ---
@@ -161,6 +206,7 @@ function PaperCanvas() {
     nodeTool.onMouseUp = () => {
       nodeDragPath = null
       nodeDrag = null
+      commitHistory()
     }
 
     // --- Add Point tool ---
@@ -189,6 +235,7 @@ function PaperCanvas() {
       location.path.divideAt(location)
       storeRef.current.setSelection(String(location.path.id))
       redrawOverlay()
+      commitHistory()
     }
 
     // --- Pan tool (space+drag override, any tool) ---
@@ -220,6 +267,7 @@ function PaperCanvas() {
         storeRef.current.clearSelection()
       }
       redrawOverlay()
+      commitHistory()
     }
 
     const exportSvg = () => {
@@ -268,6 +316,7 @@ function PaperCanvas() {
       }
 
       redrawOverlay()
+      commitHistory()
     }
 
     let spacePressed = false
@@ -277,8 +326,20 @@ function PaperCanvas() {
       const key = event.key
 
       if ((event.metaKey || event.ctrlKey) && (key === 'z' || key === 'Z')) {
-        // Intercepted but a no-op — undo/redo is not implemented (per docs/SPEC.md).
         event.preventDefault()
+        scope.activate()
+        if (event.shiftKey) {
+          redo()
+        } else {
+          undo()
+        }
+        return
+      }
+
+      if ((event.metaKey || event.ctrlKey) && (key === 'y' || key === 'Y')) {
+        event.preventDefault()
+        scope.activate()
+        redo()
         return
       }
 
@@ -382,6 +443,8 @@ function PaperCanvas() {
         if (imported) {
           storeRef.current.setSelection(String(imported.id))
         }
+        redrawOverlay()
+        commitHistory()
       }
       if (state.propsEditRequest && state.propsEditRequest.nonce !== prevState.propsEditRequest?.nonce) {
         scope.activate()
