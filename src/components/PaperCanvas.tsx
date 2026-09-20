@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
 import { useEditorStore, type PropsEdit } from '../store/editorStore'
-import { drawBackground, fitCanvasInView } from '../canvasEngine/background'
+import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import {
   findPathById,
   findPathsByIds,
@@ -362,6 +362,7 @@ function PaperCanvas() {
     }
     panTool.onMouseDrag = (event: paper.ToolEvent) => {
       scope.view.center = scope.view.center.subtract(event.delta)
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     panTool.onMouseUp = () => {
       canvas.style.cursor = 'grab'
@@ -486,6 +487,7 @@ function PaperCanvas() {
       } else if (key === '0') {
         scope.activate()
         fitCanvasInView(scope.view, storeRef.current.canvas.width, storeRef.current.canvas.height)
+        storeRef.current.setViewTransform(getViewTransform(scope.view))
       } else if (key === 'Delete' || key === 'Backspace') {
         event.preventDefault()
         scope.activate()
@@ -525,6 +527,7 @@ function PaperCanvas() {
         const delta = new paper.Point(event.deltaX, event.deltaY).divide(scope.view.zoom)
         scope.view.center = scope.view.center.add(delta)
       }
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     canvas.addEventListener('wheel', handleWheel, { passive: false })
 
@@ -532,6 +535,7 @@ function PaperCanvas() {
       scope.activate()
       scope.view.viewSize = new paper.Size(canvas.clientWidth, canvas.clientHeight)
       fitCanvasInView(scope.view, storeRef.current.canvas.width, storeRef.current.canvas.height)
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     resize()
     window.addEventListener('resize', resize)
@@ -599,6 +603,7 @@ function PaperCanvas() {
     if (!backgroundLayer) return
     drawBackground(backgroundLayer, width, height, gridVisible)
     fitCanvasInView(scope.view, width, height)
+    useEditorStore.getState().setViewTransform(getViewTransform(scope.view))
   }, [width, height, gridVisible])
 
   return <canvas ref={canvasRef} className="CanvasWrap-canvas" />

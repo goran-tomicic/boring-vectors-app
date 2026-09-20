@@ -37,6 +37,15 @@ interface SettingsState {
   scrollZoomOnly: boolean
 }
 
+/** Live view transform, pushed by PaperCanvas on every pan/zoom/resize so the Rulers component can track it without touching Paper.js. */
+export interface ViewTransform {
+  zoom: number
+  centerX: number
+  centerY: number
+  viewWidth: number
+  viewHeight: number
+}
+
 interface EditorState {
   tool: Tool
   /** Multiple paths can be selected (Select tool: shift-click / marquee); Node tool always treats it as one active path. */
@@ -74,6 +83,9 @@ interface EditorState {
   openSettingsModal: () => void
   closeSettingsModal: () => void
   setScrollZoomOnly: (value: boolean) => void
+  /** Read-only; written by PaperCanvas only. */
+  viewTransform: ViewTransform
+  setViewTransform: (transform: ViewTransform) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -116,4 +128,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   closeSettingsModal: () => set({ settingsModalOpen: false }),
   setScrollZoomOnly: (value) =>
     set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
+  viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
+  setViewTransform: (transform) => set({ viewTransform: transform }),
 }))

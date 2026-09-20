@@ -5,7 +5,6 @@ const GRID_SIZE = 20
 const GRID_MAJOR_EVERY = 5
 const GRID_MINOR_COLOR = '#2a2b33'
 const GRID_MAJOR_COLOR = '#35363f'
-const RULER_COLOR = '#6b6d78'
 const ARTBOARD_FILL = '#1f2028'
 const ARTBOARD_STROKE = '#35363f'
 
@@ -54,46 +53,6 @@ export function drawBackground(
       parent: layer,
     })
   }
-
-  drawRulers(layer, width, height)
-}
-
-function drawRulers(layer: paper.Layer, width: number, height: number) {
-  for (let c = 0; c <= Math.floor(width / GRID_SIZE); c += GRID_MAJOR_EVERY) {
-    const x = c * GRID_SIZE
-    new paper.Path.Line({
-      from: [x, -6],
-      to: [x, 0],
-      strokeColor: RULER_COLOR,
-      strokeWidth: 1,
-      parent: layer,
-    })
-    new paper.PointText({
-      point: [x + 2, -10],
-      content: String(x),
-      fillColor: RULER_COLOR,
-      fontSize: 9,
-      parent: layer,
-    })
-  }
-
-  for (let r = 0; r <= Math.floor(height / GRID_SIZE); r += GRID_MAJOR_EVERY) {
-    const y = r * GRID_SIZE
-    new paper.Path.Line({
-      from: [-6, y],
-      to: [0, y],
-      strokeColor: RULER_COLOR,
-      strokeWidth: 1,
-      parent: layer,
-    })
-    new paper.PointText({
-      point: [-24, y + 3],
-      content: String(y),
-      fillColor: RULER_COLOR,
-      fontSize: 9,
-      parent: layer,
-    })
-  }
 }
 
 export function fitCanvasInView(view: paper.View, width: number, height: number) {
@@ -103,4 +62,14 @@ export function fitCanvasInView(view: paper.View, width: number, height: number)
   )
   view.zoom = scale > 0 ? scale : 1
   view.center = new paper.Point(width / 2, height / 2)
+}
+
+export function getViewTransform(view: paper.View) {
+  return {
+    zoom: view.zoom,
+    centerX: view.center.x,
+    centerY: view.center.y,
+    viewWidth: view.viewSize.width,
+    viewHeight: view.viewSize.height,
+  }
 }
