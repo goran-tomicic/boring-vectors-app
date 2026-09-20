@@ -6,6 +6,9 @@ const TOOLS: { tool: Tool; label: string; title: string }[] = [
   { tool: 'node', label: 'N', title: 'Node (N)' },
   { tool: 'addPoint', label: '+', title: 'Add Point (+)' },
   { tool: 'ruler', label: 'R', title: 'Ruler (R)' },
+  { tool: 'pen', label: 'P', title: 'Pen (P)' },
+  { tool: 'rectangle', label: '▭', title: 'Rectangle (M)' },
+  { tool: 'ellipse', label: '◯', title: 'Ellipse (L)' },
 ]
 
 const MIN_CANVAS_SIZE = 100
