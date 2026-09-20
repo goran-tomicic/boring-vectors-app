@@ -1,0 +1,132 @@
+.DocumentsModal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.DocumentsModal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: 70vh;
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.DocumentsModal-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bv-text);
+}
+
+.DocumentsModal-new {
+  display: flex;
+  gap: 6px;
+}
+
+.DocumentsModal-new input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.DocumentsModal-new button {
+  background: var(--bv-accent-bg);
+  border: 1px solid var(--bv-accent-border);
+  color: var(--bv-accent-text);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.DocumentsModal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.DocumentsModal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--bv-panel-raised);
+}
+
+.DocumentsModal-name {
+  font-size: 12px;
+  color: var(--bv-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.DocumentsModal-current {
+  color: var(--bv-text-faint);
+  font-size: 11px;
+}
+
+.DocumentsModal-nameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-accent-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.DocumentsModal-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.DocumentsModal-actions button {
+  background: transparent;
+  border: 1px solid var(--bv-border);
+  color: var(--bv-text-dim);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.DocumentsModal-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.DocumentsModal-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.DocumentsModal-footer button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--bv-border);
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}

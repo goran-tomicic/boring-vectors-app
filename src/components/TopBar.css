@@ -37,6 +37,24 @@
   color: var(--bv-accent-text);
 }
 
+.TopBar-documentName {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--bv-text-dim);
+  padding: 6px 10px;
+  font-size: 12px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.TopBar-documentName:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
 .TopBar-canvasSize {
   color: var(--bv-text-faint);
   font-size: 12px;
