@@ -86,6 +86,19 @@ interface EditorState {
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
+  /** Reflects the currently open document; written by PaperCanvas on load/switch, or by DocumentsModal when renaming the open document. */
+  currentDocumentId: string
+  currentDocumentName: string
+  setCurrentDocument: (id: string, name: string) => void
+  documentsModalOpen: boolean
+  openDocumentsModal: () => void
+  closeDocumentsModal: () => void
+  /** Nonce-based signal for PaperCanvas to switch the live canvas to a different saved document. */
+  switchDocumentRequest: { id: string; nonce: number } | null
+  requestSwitchDocument: (id: string) => void
+  /** Nonce-based signal for PaperCanvas to save current content, then reset the canvas to a new blank document. */
+  newDocumentRequest: { name: string; nonce: number } | null
+  requestNewDocument: (name: string) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -130,4 +143,20 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
   viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
   setViewTransform: (transform) => set({ viewTransform: transform }),
+  currentDocumentId: '',
+  currentDocumentName: '',
+  setCurrentDocument: (id, name) => set({ currentDocumentId: id, currentDocumentName: name }),
+  documentsModalOpen: false,
+  openDocumentsModal: () => set({ documentsModalOpen: true }),
+  closeDocumentsModal: () => set({ documentsModalOpen: false }),
+  switchDocumentRequest: null,
+  requestSwitchDocument: (id) =>
+    set((state) => ({
+      switchDocumentRequest: { id, nonce: (state.switchDocumentRequest?.nonce ?? 0) + 1 },
+    })),
+  newDocumentRequest: null,
+  requestNewDocument: (name) =>
+    set((state) => ({
+      newDocumentRequest: { name, nonce: (state.newDocumentRequest?.nonce ?? 0) + 1 },
+    })),
 }))

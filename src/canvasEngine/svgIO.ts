@@ -1,31 +1,5 @@
 import paper from 'paper'
 
-const AUTOSAVE_KEY = 'boring-vectors:autosave'
-
-export interface AutosavePayload {
-  svg: string
-  canvasWidth: number
-  canvasHeight: number
-}
-
-export function loadAutosave(): AutosavePayload | null {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as AutosavePayload
-  } catch {
-    return null
-  }
-}
-
-export function saveAutosave(payload: AutosavePayload) {
-  try {
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(payload))
-  } catch {
-    // Storage full or unavailable — autosave is best-effort.
-  }
-}
-
 export function importSvgIntoContent(
   contentLayer: paper.Layer,
   svg: string,
@@ -34,6 +8,7 @@ export function importSvgIntoContent(
   center: boolean = true,
 ): paper.Path | null {
   const imported = contentLayer.importSVG(svg, { expandShapes: true })
+  if (!imported) return null
 
   let paths: paper.Path[]
   if (imported instanceof paper.Path) {

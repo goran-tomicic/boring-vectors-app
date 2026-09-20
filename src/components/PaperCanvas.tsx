@@ -17,7 +17,16 @@ import {
   drawNodeOverlay,
   computeSelectedPathProps,
 } from '../canvasEngine/overlay'
-import { loadAutosave, saveAutosave, importSvgIntoContent } from '../canvasEngine/svgIO'
+import { importSvgIntoContent } from '../canvasEngine/svgIO'
+import {
+  type DocumentPayload,
+  ensureCurrentDocument,
+  loadDocument,
+  saveDocument,
+  listDocuments,
+  setCurrentDocumentId,
+  createDocumentId,
+} from '../documents'
 
 const ADD_POINT_TOLERANCE = 12
 const ANCHOR_RADIUS = 4
@@ -58,23 +67,34 @@ function PaperCanvas() {
     const contentLayer = new scope.Layer({ name: 'content' })
     const overlayLayer = new scope.Layer({ name: 'overlay' })
 
-    const saved = loadAutosave()
-    if (saved) {
-      importSvgIntoContent(contentLayer, saved.svg, saved.canvasWidth, saved.canvasHeight, false)
-      if (
-        saved.canvasWidth !== storeRef.current.canvas.width ||
-        saved.canvasHeight !== storeRef.current.canvas.height
-      ) {
-        storeRef.current.setCanvasSize(saved.canvasWidth, saved.canvasHeight)
-      }
+    let currentDocId: string
+    let currentDocName: string
+    const initialDoc = ensureCurrentDocument()
+    currentDocId = initialDoc.id
+    currentDocName = initialDoc.name
+    if (initialDoc.payload.svg) {
+      importSvgIntoContent(
+        contentLayer,
+        initialDoc.payload.svg,
+        initialDoc.payload.canvasWidth,
+        initialDoc.payload.canvasHeight,
+        false,
+      )
     }
+    if (
+      initialDoc.payload.canvasWidth !== storeRef.current.canvas.width ||
+      initialDoc.payload.canvasHeight !== storeRef.current.canvas.height
+    ) {
+      storeRef.current.setCanvasSize(initialDoc.payload.canvasWidth, initialDoc.payload.canvasHeight)
+    }
+    storeRef.current.setCurrentDocument(currentDocId, currentDocName)
 
     let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
     const scheduleAutosave = () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
       autosaveTimeout = setTimeout(() => {
         const svg = contentLayer.exportSVG({ asString: true }) as string
-        saveAutosave({
+        saveDocument(currentDocId, currentDocName, {
           svg,
           canvasWidth: storeRef.current.canvas.width,
           canvasHeight: storeRef.current.canvas.height,
@@ -148,6 +168,58 @@ function PaperCanvas() {
       for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
         drawSelectionHighlight(overlayLayer, path, zoom)
       }
+    }
+
+    const flushAutosaveNow = () => {
+      if (autosaveTimeout) {
+        clearTimeout(autosaveTimeout)
+        autosaveTimeout = undefined
+      }
+      const svg = contentLayer.exportSVG({ asString: true }) as string
+      saveDocument(currentDocId, currentDocName, {
+        svg,
+        canvasWidth: storeRef.current.canvas.width,
+        canvasHeight: storeRef.current.canvas.height,
+      })
+    }
+
+    const loadDocumentIntoCanvas = (id: string, name: string, payload: DocumentPayload) => {
+      contentLayer.removeChildren()
+      if (payload.svg) {
+        importSvgIntoContent(contentLayer, payload.svg, payload.canvasWidth, payload.canvasHeight, false)
+      }
+      currentDocId = id
+      currentDocName = name
+      setCurrentDocumentId(id)
+      storeRef.current.setCurrentDocument(id, name)
+      if (
+        payload.canvasWidth !== storeRef.current.canvas.width ||
+        payload.canvasHeight !== storeRef.current.canvas.height
+      ) {
+        storeRef.current.setCanvasSize(payload.canvasWidth, payload.canvasHeight)
+      }
+      storeRef.current.clearSelection()
+      history.length = 0
+      future.length = 0
+      currentSnapshot = snapshotContent()
+      redrawOverlay()
+    }
+
+    const switchToDocument = (id: string) => {
+      if (id === currentDocId) return
+      flushAutosaveNow()
+      const payload = loadDocument(id)
+      if (!payload) return
+      const meta = listDocuments().find((doc) => doc.id === id)
+      loadDocumentIntoCanvas(id, meta?.name ?? 'Untitled', payload)
+    }
+
+    const createNewDocument = (name: string) => {
+      flushAutosaveNow()
+      const id = createDocumentId()
+      const payload: DocumentPayload = { svg: '', canvasWidth: 800, canvasHeight: 600 }
+      saveDocument(id, name, payload)
+      loadDocumentIntoCanvas(id, name, payload)
     }
 
     // --- Select tool ---
@@ -715,6 +787,14 @@ function PaperCanvas() {
       if (state.exportRequest !== prevState.exportRequest) {
         scope.activate()
         exportSvg()
+      }
+      if (state.switchDocumentRequest && state.switchDocumentRequest.nonce !== prevState.switchDocumentRequest?.nonce) {
+        scope.activate()
+        switchToDocument(state.switchDocumentRequest.id)
+      }
+      if (state.newDocumentRequest && state.newDocumentRequest.nonce !== prevState.newDocumentRequest?.nonce) {
+        scope.activate()
+        createNewDocument(state.newDocumentRequest.name)
       }
     })
 

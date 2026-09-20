@@ -32,6 +32,8 @@ function TopBar() {
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const requestExport = useEditorStore((s) => s.requestExport)
   const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
+  const currentDocumentName = useEditorStore((s) => s.currentDocumentName)
+  const openDocumentsModal = useEditorStore((s) => s.openDocumentsModal)
 
   return (
     <header className="TopBar">
@@ -49,6 +51,15 @@ function TopBar() {
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="TopBar-documentName"
+        onClick={openDocumentsModal}
+        title="Documents"
+      >
+        {currentDocumentName || 'Untitled'}
+      </button>
 
       <div className="TopBar-group TopBar-canvasSize">
         <input
