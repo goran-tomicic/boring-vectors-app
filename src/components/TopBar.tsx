@@ -5,6 +5,7 @@ const TOOLS: { tool: Tool; label: string; title: string }[] = [
   { tool: 'select', label: 'V', title: 'Select (V)' },
   { tool: 'node', label: 'N', title: 'Node (N)' },
   { tool: 'addPoint', label: '+', title: 'Add Point (+)' },
+  { tool: 'ruler', label: 'R', title: 'Ruler (R)' },
 ]
 
 const MIN_CANVAS_SIZE = 100

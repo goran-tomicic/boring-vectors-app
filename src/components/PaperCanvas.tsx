@@ -309,6 +309,52 @@ function PaperCanvas() {
       commitHistory()
     }
 
+    // --- Ruler tool ---
+    let rulerStart: paper.Point | null = null
+    let rulerLine: paper.Path | null = null
+    let rulerText: paper.PointText | null = null
+    const clearRulerOverlay = () => {
+      if (rulerLine) {
+        rulerLine.remove()
+        rulerLine = null
+      }
+      if (rulerText) {
+        rulerText.remove()
+        rulerText = null
+      }
+    }
+    const rulerTool = new scope.Tool()
+    rulerTool.onMouseDown = (event: paper.ToolEvent) => {
+      clearRulerOverlay()
+      rulerStart = event.point
+    }
+    rulerTool.onMouseDrag = (event: paper.ToolEvent) => {
+      if (!rulerStart) return
+      clearRulerOverlay()
+      const zoom = scope.view.zoom
+      rulerLine = new paper.Path.Line({
+        from: rulerStart,
+        to: event.point,
+        strokeColor: ACCENT,
+        strokeWidth: 1.5 / zoom,
+        dashArray: [4 / zoom, 3 / zoom],
+        parent: overlayLayer,
+      })
+      const distance = rulerStart.getDistance(event.point)
+      const angle = event.point.subtract(rulerStart).angle
+      const mid = rulerStart.add(event.point).divide(2)
+      rulerText = new paper.PointText({
+        point: mid.add(new paper.Point(6 / zoom, -6 / zoom)),
+        content: `${distance.toFixed(1)}px, ${angle.toFixed(1)}°`,
+        fillColor: ACCENT,
+        fontSize: 11 / zoom,
+        parent: overlayLayer,
+      })
+    }
+    rulerTool.onMouseUp = () => {
+      rulerStart = null
+    }
+
     // --- Pan tool (space+drag override, any tool) ---
     const panTool = new scope.Tool()
     panTool.onMouseDown = () => {
@@ -321,7 +367,7 @@ function PaperCanvas() {
       canvas.style.cursor = 'grab'
     }
 
-    const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool }
+    const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool, ruler: rulerTool }
 
     const deleteSelected = () => {
       const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
@@ -433,6 +479,8 @@ function PaperCanvas() {
         storeRef.current.setTool('node')
       } else if (key === '+' || key === '=') {
         storeRef.current.setTool('addPoint')
+      } else if (key === 'r' || key === 'R') {
+        storeRef.current.setTool('ruler')
       } else if (key === 'g' || key === 'G') {
         storeRef.current.toggleGrid()
       } else if (key === '0') {
