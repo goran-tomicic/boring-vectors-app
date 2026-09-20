@@ -86,7 +86,7 @@ export function deleteDocument(id: string) {
   }
 }
 
-export function getCurrentDocumentId(): string | null {
+function getCurrentDocumentId(): string | null {
   try {
     return localStorage.getItem(CURRENT_KEY)
   } catch {

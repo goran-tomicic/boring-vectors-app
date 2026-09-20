@@ -46,7 +46,7 @@ export interface ViewTransform {
   viewHeight: number
 }
 
-interface EditorState {
+export interface EditorState {
   tool: Tool
   /** Multiple paths can be selected (Select tool: shift-click / marquee); Node tool always treats it as one active path. */
   selectedPathIds: string[]
