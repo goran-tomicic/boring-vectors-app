@@ -28,6 +28,9 @@ const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
 const ZOOM_WHEEL_SENSITIVITY = 1.0015
 const AUTOSAVE_DEBOUNCE_MS = 500
+const PEN_CLOSE_TOLERANCE = 10
+const NEW_SHAPE_FILL = '#c084fc'
+const NEW_SHAPE_STROKE = '#000000'
 const MAX_HISTORY = 100
 
 function PaperCanvas() {
@@ -309,6 +312,113 @@ function PaperCanvas() {
       commitHistory()
     }
 
+    // --- Pen tool ---
+    let penPath: paper.Path | null = null
+    let penDragging = false
+    const finishPen = (close: boolean) => {
+      if (!penPath) return
+      if (close && penPath.segments.length > MIN_SEGMENTS) {
+        penPath.closed = true
+      }
+      // A pen path started but abandoned with a single point isn't a real shape.
+      if (penPath.segments.length < 2) {
+        penPath.remove()
+      } else {
+        storeRef.current.setSelection([String(penPath.id)])
+      }
+      penPath = null
+      penDragging = false
+      redrawOverlay()
+      commitHistory()
+    }
+    const penTool = new scope.Tool()
+    penTool.onMouseDown = (event: paper.ToolEvent) => {
+      if (penPath) {
+        const first = penPath.firstSegment
+        if (
+          penPath.segments.length > MIN_SEGMENTS &&
+          first.point.getDistance(event.point) <= PEN_CLOSE_TOLERANCE / scope.view.zoom
+        ) {
+          finishPen(true)
+          return
+        }
+        penPath.add(event.point)
+      } else {
+        penPath = new paper.Path({
+          segments: [event.point],
+          strokeColor: NEW_SHAPE_STROKE,
+          fillColor: NEW_SHAPE_FILL,
+          strokeWidth: 1,
+          parent: contentLayer,
+        })
+      }
+      penDragging = true
+    }
+    penTool.onMouseDrag = (event: paper.ToolEvent) => {
+      if (!penPath || !penDragging) return
+      const segment = penPath.lastSegment
+      segment.handleOut = segment.handleOut.add(event.delta)
+      segment.handleIn = segment.handleOut.multiply(-1)
+    }
+    penTool.onMouseUp = () => {
+      penDragging = false
+    }
+
+    // --- Rectangle / Ellipse tools ---
+    let shapeStart: paper.Point | null = null
+    let shapePreview: paper.Path | null = null
+    const makeShapeTool = (kind: 'rectangle' | 'ellipse') => {
+      const tool = new scope.Tool()
+      tool.onMouseDown = (event: paper.ToolEvent) => {
+        shapeStart = event.point
+      }
+      tool.onMouseDrag = (event: paper.ToolEvent) => {
+        if (!shapeStart) return
+        if (shapePreview) shapePreview.remove()
+        let corner = event.point
+        if (event.modifiers.shift) {
+          const size = Math.max(Math.abs(corner.x - shapeStart.x), Math.abs(corner.y - shapeStart.y))
+          corner = new paper.Point(
+            shapeStart.x + Math.sign(corner.x - shapeStart.x || 1) * size,
+            shapeStart.y + Math.sign(corner.y - shapeStart.y || 1) * size,
+          )
+        }
+        const rect = new paper.Rectangle(shapeStart, corner)
+        shapePreview =
+          kind === 'rectangle'
+            ? new paper.Path.Rectangle({
+                rectangle: rect,
+                strokeColor: NEW_SHAPE_STROKE,
+                fillColor: NEW_SHAPE_FILL,
+                strokeWidth: 1,
+                parent: contentLayer,
+              })
+            : new paper.Path.Ellipse({
+                rectangle: rect,
+                strokeColor: NEW_SHAPE_STROKE,
+                fillColor: NEW_SHAPE_FILL,
+                strokeWidth: 1,
+                parent: contentLayer,
+              })
+      }
+      tool.onMouseUp = () => {
+        shapeStart = null
+        if (shapePreview) {
+          if (shapePreview.bounds.width < 1 || shapePreview.bounds.height < 1) {
+            shapePreview.remove()
+          } else {
+            storeRef.current.setSelection([String(shapePreview.id)])
+            redrawOverlay()
+            commitHistory()
+          }
+          shapePreview = null
+        }
+      }
+      return tool
+    }
+    const rectangleTool = makeShapeTool('rectangle')
+    const ellipseTool = makeShapeTool('ellipse')
+
     // --- Ruler tool ---
     let rulerStart: paper.Point | null = null
     let rulerLine: paper.Path | null = null
@@ -368,7 +478,15 @@ function PaperCanvas() {
       canvas.style.cursor = 'grab'
     }
 
-    const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool, ruler: rulerTool }
+    const tools = {
+      select: selectTool,
+      node: nodeTool,
+      addPoint: addPointTool,
+      ruler: rulerTool,
+      pen: penTool,
+      rectangle: rectangleTool,
+      ellipse: ellipseTool,
+    }
 
     const deleteSelected = () => {
       const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
@@ -482,6 +600,21 @@ function PaperCanvas() {
         storeRef.current.setTool('addPoint')
       } else if (key === 'r' || key === 'R') {
         storeRef.current.setTool('ruler')
+      } else if (key === 'p' || key === 'P') {
+        storeRef.current.setTool('pen')
+      } else if (key === 'm' || key === 'M') {
+        storeRef.current.setTool('rectangle')
+      } else if (key === 'l' || key === 'L') {
+        storeRef.current.setTool('ellipse')
+      } else if (key === 'Enter' && storeRef.current.tool === 'pen') {
+        scope.activate()
+        finishPen(false)
+      } else if (key === 'Escape' && storeRef.current.tool === 'pen') {
+        scope.activate()
+        if (penPath) penPath.remove()
+        penPath = null
+        penDragging = false
+        redrawOverlay()
       } else if (key === 'g' || key === 'G') {
         storeRef.current.toggleGrid()
       } else if (key === '0') {
@@ -543,6 +676,10 @@ function PaperCanvas() {
     tools[storeRef.current.tool].activate()
     const unsubscribeTool = useEditorStore.subscribe((state, prevState) => {
       if (state.tool !== prevState.tool) {
+        if (prevState.tool === 'pen' && penPath) {
+          scope.activate()
+          finishPen(false)
+        }
         tools[state.tool].activate()
       }
       if (

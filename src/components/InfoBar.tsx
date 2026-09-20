@@ -5,7 +5,7 @@ function InfoBar() {
     <footer className="InfoBar">
       <span className="InfoBar-status">Ready</span>
       <span className="InfoBar-shortcuts">
-        V Select · N Node · + Add Point · R Ruler · G Grid · 0 Fit
+        V Select · N Node · + Add Point · R Ruler · P Pen · M Rect · L Ellipse · G Grid · 0 Fit
       </span>
     </footer>
   )
