@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type Tool = 'select' | 'node' | 'addPoint'
+export type Tool = 'select' | 'node' | 'addPoint' | 'ruler'
 
 /** Read-only snapshot of the selected path's Paper.js properties, refreshed by PaperCanvas on every selection/geometry change. */
 export interface SelectedPathProps {
@@ -35,6 +35,15 @@ interface CanvasState {
 
 interface SettingsState {
   scrollZoomOnly: boolean
+}
+
+/** Live view transform, pushed by PaperCanvas on every pan/zoom/resize so the Rulers component can track it without touching Paper.js. */
+export interface ViewTransform {
+  zoom: number
+  centerX: number
+  centerY: number
+  viewWidth: number
+  viewHeight: number
 }
 
 interface EditorState {
@@ -74,6 +83,9 @@ interface EditorState {
   openSettingsModal: () => void
   closeSettingsModal: () => void
   setScrollZoomOnly: (value: boolean) => void
+  /** Read-only; written by PaperCanvas only. */
+  viewTransform: ViewTransform
+  setViewTransform: (transform: ViewTransform) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -116,4 +128,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   closeSettingsModal: () => set({ settingsModalOpen: false }),
   setScrollZoomOnly: (value) =>
     set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
+  viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
+  setViewTransform: (transform) => set({ viewTransform: transform }),
 }))

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
 import { useEditorStore, type PropsEdit } from '../store/editorStore'
-import { drawBackground, fitCanvasInView } from '../canvasEngine/background'
+import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import {
   findPathById,
   findPathsByIds,
@@ -309,6 +309,52 @@ function PaperCanvas() {
       commitHistory()
     }
 
+    // --- Ruler tool ---
+    let rulerStart: paper.Point | null = null
+    let rulerLine: paper.Path | null = null
+    let rulerText: paper.PointText | null = null
+    const clearRulerOverlay = () => {
+      if (rulerLine) {
+        rulerLine.remove()
+        rulerLine = null
+      }
+      if (rulerText) {
+        rulerText.remove()
+        rulerText = null
+      }
+    }
+    const rulerTool = new scope.Tool()
+    rulerTool.onMouseDown = (event: paper.ToolEvent) => {
+      clearRulerOverlay()
+      rulerStart = event.point
+    }
+    rulerTool.onMouseDrag = (event: paper.ToolEvent) => {
+      if (!rulerStart) return
+      clearRulerOverlay()
+      const zoom = scope.view.zoom
+      rulerLine = new paper.Path.Line({
+        from: rulerStart,
+        to: event.point,
+        strokeColor: ACCENT,
+        strokeWidth: 1.5 / zoom,
+        dashArray: [4 / zoom, 3 / zoom],
+        parent: overlayLayer,
+      })
+      const distance = rulerStart.getDistance(event.point)
+      const angle = event.point.subtract(rulerStart).angle
+      const mid = rulerStart.add(event.point).divide(2)
+      rulerText = new paper.PointText({
+        point: mid.add(new paper.Point(6 / zoom, -6 / zoom)),
+        content: `${distance.toFixed(1)}px, ${angle.toFixed(1)}°`,
+        fillColor: ACCENT,
+        fontSize: 11 / zoom,
+        parent: overlayLayer,
+      })
+    }
+    rulerTool.onMouseUp = () => {
+      rulerStart = null
+    }
+
     // --- Pan tool (space+drag override, any tool) ---
     const panTool = new scope.Tool()
     panTool.onMouseDown = () => {
@@ -316,12 +362,13 @@ function PaperCanvas() {
     }
     panTool.onMouseDrag = (event: paper.ToolEvent) => {
       scope.view.center = scope.view.center.subtract(event.delta)
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     panTool.onMouseUp = () => {
       canvas.style.cursor = 'grab'
     }
 
-    const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool }
+    const tools = { select: selectTool, node: nodeTool, addPoint: addPointTool, ruler: rulerTool }
 
     const deleteSelected = () => {
       const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
@@ -433,11 +480,14 @@ function PaperCanvas() {
         storeRef.current.setTool('node')
       } else if (key === '+' || key === '=') {
         storeRef.current.setTool('addPoint')
+      } else if (key === 'r' || key === 'R') {
+        storeRef.current.setTool('ruler')
       } else if (key === 'g' || key === 'G') {
         storeRef.current.toggleGrid()
       } else if (key === '0') {
         scope.activate()
         fitCanvasInView(scope.view, storeRef.current.canvas.width, storeRef.current.canvas.height)
+        storeRef.current.setViewTransform(getViewTransform(scope.view))
       } else if (key === 'Delete' || key === 'Backspace') {
         event.preventDefault()
         scope.activate()
@@ -477,6 +527,7 @@ function PaperCanvas() {
         const delta = new paper.Point(event.deltaX, event.deltaY).divide(scope.view.zoom)
         scope.view.center = scope.view.center.add(delta)
       }
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     canvas.addEventListener('wheel', handleWheel, { passive: false })
 
@@ -484,6 +535,7 @@ function PaperCanvas() {
       scope.activate()
       scope.view.viewSize = new paper.Size(canvas.clientWidth, canvas.clientHeight)
       fitCanvasInView(scope.view, storeRef.current.canvas.width, storeRef.current.canvas.height)
+      storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     resize()
     window.addEventListener('resize', resize)
@@ -551,6 +603,7 @@ function PaperCanvas() {
     if (!backgroundLayer) return
     drawBackground(backgroundLayer, width, height, gridVisible)
     fitCanvasInView(scope.view, width, height)
+    useEditorStore.getState().setViewTransform(getViewTransform(scope.view))
   }, [width, height, gridVisible])
 
   return <canvas ref={canvasRef} className="CanvasWrap-canvas" />
