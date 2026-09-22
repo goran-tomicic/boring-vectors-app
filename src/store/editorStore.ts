@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
+export type Theme = 'dark' | 'light'
 
 /** Read-only snapshot of the selected path's Paper.js properties, refreshed by PaperCanvas on every selection/geometry change. */
 export interface SelectedPathProps {
@@ -39,6 +40,7 @@ interface CanvasState {
 
 interface SettingsState {
   scrollZoomOnly: boolean
+  theme: Theme
 }
 
 /** Live view transform, pushed by PaperCanvas on every pan/zoom/resize so the Rulers component can track it without touching Paper.js. */
@@ -89,6 +91,7 @@ export interface EditorState {
   openSettingsModal: () => void
   closeSettingsModal: () => void
   setScrollZoomOnly: (value: boolean) => void
+  setTheme: (theme: Theme) => void
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
@@ -114,7 +117,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedPathIds: [],
   selectedSegmentIndex: null,
   canvas: { width: 800, height: 600, gridVisible: true, zoom: 1, backgroundColor: '#1f2028', backgroundOpacity: 1 },
-  settings: { scrollZoomOnly: false },
+  settings: { scrollZoomOnly: false, theme: 'dark' },
   status: 'Ready',
   setTool: (tool) => set({ tool }),
   setCanvasSize: (width, height) =>
@@ -155,6 +158,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   closeSettingsModal: () => set({ settingsModalOpen: false }),
   setScrollZoomOnly: (value) =>
     set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
+  setTheme: (theme) => set((state) => ({ settings: { ...state.settings, theme } })),
   viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
   setViewTransform: (transform) => set({ viewTransform: transform }),
   currentDocumentId: '',

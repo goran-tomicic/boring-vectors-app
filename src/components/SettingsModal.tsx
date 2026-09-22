@@ -7,6 +7,8 @@ function SettingsModal() {
   const closeSettingsModal = useEditorStore((s) => s.closeSettingsModal)
   const scrollZoomOnly = useEditorStore((s) => s.settings.scrollZoomOnly)
   const setScrollZoomOnly = useEditorStore((s) => s.setScrollZoomOnly)
+  const theme = useEditorStore((s) => s.settings.theme)
+  const setTheme = useEditorStore((s) => s.setTheme)
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
@@ -36,6 +38,28 @@ function SettingsModal() {
               value={canvasHeight}
               onChange={(e) => setCanvasSize(canvasWidth, clampCanvasSize(Number(e.target.value)))}
             />
+          </div>
+        </div>
+
+        <div className="SettingsModal-section">
+          <div className="SettingsModal-label">Theme</div>
+          <div className="SettingsModal-themeRow">
+            <button
+              type="button"
+              className="SettingsModal-themeBtn"
+              aria-pressed={theme === 'dark'}
+              onClick={() => setTheme('dark')}
+            >
+              Dark
+            </button>
+            <button
+              type="button"
+              className="SettingsModal-themeBtn"
+              aria-pressed={theme === 'light'}
+              onClick={() => setTheme('light')}
+            >
+              Light
+            </button>
           </div>
         </div>
 
