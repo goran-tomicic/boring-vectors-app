@@ -99,6 +99,8 @@ export interface EditorState {
   /** Nonce-based signal for PaperCanvas to save current content, then reset the canvas to a new blank document. */
   newDocumentRequest: { name: string; nonce: number } | null
   requestNewDocument: (name: string) => void
+  propsPanelVisible: boolean
+  togglePropsPanel: () => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -159,4 +161,6 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({
       newDocumentRequest: { name, nonce: (state.newDocumentRequest?.nonce ?? 0) + 1 },
     })),
+  propsPanelVisible: true,
+  togglePropsPanel: () => set((state) => ({ propsPanelVisible: !state.propsPanelVisible })),
 }))

@@ -1,0 +1,40 @@
+.PanelToggle {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: flex;
+  padding: 4px;
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+}
+
+.PanelToggle-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bv-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.PanelToggle-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.PanelToggle-btn:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
+.PanelToggle-btn[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}

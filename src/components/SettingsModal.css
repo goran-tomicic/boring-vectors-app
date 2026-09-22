@@ -27,6 +27,34 @@
   color: var(--bv-text);
 }
 
+.SettingsModal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.SettingsModal-label {
+  font-size: 12px;
+  color: var(--bv-text-dim);
+}
+
+.SettingsModal-sizeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--bv-text-faint);
+  font-size: 12px;
+}
+
+.SettingsModal-sizeRow input {
+  width: 72px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 4px 6px;
+}
+
 .SettingsModal-row {
   display: flex;
   align-items: center;
