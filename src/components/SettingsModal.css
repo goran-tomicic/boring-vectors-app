@@ -55,6 +55,27 @@
   padding: 4px 6px;
 }
 
+.SettingsModal-themeRow {
+  display: flex;
+  gap: 6px;
+}
+
+.SettingsModal-themeBtn {
+  flex: 1 1 auto;
+  padding: 6px 0;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--bv-border);
+  background: var(--bv-panel-raised);
+  color: var(--bv-text-dim);
+}
+
+.SettingsModal-themeBtn[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}
+
 .SettingsModal-row {
   display: flex;
   align-items: center;

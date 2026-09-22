@@ -38,6 +38,38 @@
   --bv-mono: ui-monospace, Consolas, monospace;
 }
 
+:root[data-theme='light'] {
+  /* Surfaces */
+  --bv-bg: #f5f6f8;
+  --bv-panel: #ffffff;
+  --bv-panel-raised: #eef0f3;
+  --bv-border: #dde1e6;
+
+  /* Text */
+  --bv-text: #1c1d24;
+  --bv-text-dim: #5b6270;
+  --bv-text-faint: #8b909c;
+
+  /* Accent */
+  --bv-accent: #9333ea;
+  --bv-accent-bg: rgba(147, 51, 234, 0.1);
+  --bv-accent-border: rgba(147, 51, 234, 0.45);
+  --bv-accent-text: #7e22ce;
+
+  /* Canvas */
+  --bv-canvas-bg: #eef0f3;
+  --bv-grid-line: #e2e5ea;
+  --bv-grid-line-major: #cdd2da;
+
+  /* Feedback */
+  --bv-danger: #dc2626;
+  --bv-success: #16a34a;
+  --bv-warning: #d97706;
+
+  /* Transparency indicator (color pickers) */
+  --bv-checkerboard: repeating-conic-gradient(#d8dade 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+}
+
 * {
   box-sizing: border-box;
 }
