@@ -94,13 +94,19 @@ function Toolbar() {
     const bounds = pill?.offsetParent as HTMLElement | null
     if (!pill || !bounds) return
 
+    event.preventDefault()
+
     const pillRect = pill.getBoundingClientRect()
     dragOffset.current = {
       x: event.clientX - pillRect.left,
       y: event.clientY - pillRect.top,
     }
 
+    const previousUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+
     const handleMove = (moveEvent: PointerEvent) => {
+      moveEvent.preventDefault()
       const boundsRect = bounds.getBoundingClientRect()
       let left = moveEvent.clientX - boundsRect.left - dragOffset.current.x
       let top = moveEvent.clientY - boundsRect.top - dragOffset.current.y
@@ -109,6 +115,7 @@ function Toolbar() {
       setPosition({ left, top })
     }
     const handleUp = () => {
+      document.body.style.userSelect = previousUserSelect
       document.removeEventListener('pointermove', handleMove)
       document.removeEventListener('pointerup', handleUp)
     }
