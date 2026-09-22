@@ -8,6 +8,7 @@ interface ColorPickerProps {
   onChange: (hex: string) => void
   opacity: number
   onOpacityChange: (opacity: number) => void
+  disabled?: boolean
 }
 
 interface Hsv {
@@ -61,7 +62,7 @@ function hsvToRgb({ h, s, v }: Hsv): { r: number; g: number; b: number } {
   return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 }
 }
 
-function ColorPicker({ value, onChange, opacity, onOpacityChange }: ColorPickerProps) {
+function ColorPicker({ value, onChange, opacity, onOpacityChange, disabled = false }: ColorPickerProps) {
   const [open, setOpen] = useState(false)
   const [hexDraft, setHexDraft] = useState(value)
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null)
@@ -221,6 +222,7 @@ function ColorPicker({ value, onChange, opacity, onOpacityChange }: ColorPickerP
         ref={pillRef}
         type="button"
         className="ColorPicker-pill"
+        disabled={disabled}
         onClick={() => {
           setHexDraft(value)
           setOpen((o) => !o)

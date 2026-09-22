@@ -110,6 +110,12 @@ export function drawNodeOverlay(
   })
 }
 
+/** paper.Color#toCSS() emits rgb()/hsl() for non-RGB color spaces — always build a plain hex string instead, since PropsPanel's ColorPicker only parses #rrggbb. */
+function colorToHex(color: paper.Color): string {
+  const clamp = (n: number) => Math.max(0, Math.min(255, Math.round(n * 255)))
+  return `#${[color.red, color.green, color.blue].map((n) => clamp(n).toString(16).padStart(2, '0')).join('')}`
+}
+
 export function computeSelectedPathProps(
   path: paper.Path,
   selectedSegmentIndex: number | null,
@@ -137,9 +143,11 @@ export function computeSelectedPathProps(
             y: segment.point.y + segment.handleOut.y,
           }
         : null,
-    strokeColor: path.strokeColor ? path.strokeColor.toCSS(true) : '#000000',
+    strokeColor: path.strokeColor ? colorToHex(path.strokeColor) : '#000000',
+    strokeOpacity: path.strokeColor ? path.strokeColor.alpha : 1,
     strokeWidth: path.strokeWidth,
-    fillColor: path.fillColor ? path.fillColor.toCSS(true) : null,
+    fillColor: path.fillColor ? colorToHex(path.fillColor) : null,
+    fillOpacity: path.fillColor ? path.fillColor.alpha : 1,
     nodeCount: path.segments.length,
     closed: path.closed,
   }

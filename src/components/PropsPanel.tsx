@@ -179,18 +179,12 @@ function PropsPanel() {
       <section className="PropsPanel-section">
         <h3 className="PropsPanel-heading">Stroke</h3>
         <div className="PropsPanel-row">
-          <input
-            type="color"
+          <ColorPicker
             value={props?.strokeColor ?? '#000000'}
+            onChange={(color) => requestPropsEdit({ kind: 'stroke', color })}
+            opacity={props?.strokeOpacity ?? 1}
+            onOpacityChange={(opacity) => requestPropsEdit({ kind: 'stroke', opacity })}
             disabled={disabled}
-            onChange={(e) => requestPropsEdit({ kind: 'stroke', color: e.target.value })}
-          />
-          <input
-            type="text"
-            placeholder="#000000"
-            value={props?.strokeColor ?? ''}
-            disabled={disabled}
-            onChange={(e) => requestPropsEdit({ kind: 'stroke', color: e.target.value })}
           />
         </div>
         <div className="PropsPanel-row">
@@ -215,19 +209,17 @@ function PropsPanel() {
       <section className="PropsPanel-section">
         <h3 className="PropsPanel-heading">Fill</h3>
         <div className="PropsPanel-row">
-          <input
-            type="color"
+          <ColorPicker
             value={props?.fillColor ?? '#000000'}
+            onChange={(color) => requestPropsEdit({ kind: 'fill', color })}
+            opacity={props?.fillOpacity ?? 1}
+            onOpacityChange={(opacity) =>
+              requestPropsEdit({ kind: 'fill', color: props?.fillColor ?? '#000000', opacity })
+            }
             disabled={disabled || !props?.fillColor}
-            onChange={(e) => requestPropsEdit({ kind: 'fill', color: e.target.value })}
           />
-          <input
-            type="text"
-            placeholder="#000000"
-            value={props?.fillColor ?? ''}
-            disabled={disabled || !props?.fillColor}
-            onChange={(e) => requestPropsEdit({ kind: 'fill', color: e.target.value })}
-          />
+        </div>
+        <div className="PropsPanel-row">
           <label>
             <input
               type="checkbox"
