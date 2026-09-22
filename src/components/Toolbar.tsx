@@ -135,10 +135,6 @@ function Toolbar() {
 
       <div className="Toolbar-div" />
 
-      <div className="Toolbar-logo" title="Boring Vectors" />
-
-      <div className="Toolbar-div" />
-
       {TOOLS.map(({ tool: t, title, icon }) => (
         <button
           key={t}

@@ -41,14 +41,6 @@
   margin: 0 2px;
 }
 
-.Toolbar-logo {
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  background: linear-gradient(135deg, var(--bv-accent), #47bfff);
-  flex: 0 0 auto;
-}
-
 .Toolbar-btn {
   width: 30px;
   height: 30px;
