@@ -8,7 +8,12 @@ export interface DocumentPayload {
   svg: string
   canvasWidth: number
   canvasHeight: number
+  backgroundColor?: string
+  backgroundOpacity?: number
 }
+
+export const DEFAULT_BACKGROUND_COLOR = '#1f2028'
+export const DEFAULT_BACKGROUND_OPACITY = 1
 
 const INDEX_KEY = 'boring-vectors:documents'
 const CURRENT_KEY = 'boring-vectors:currentDocument'

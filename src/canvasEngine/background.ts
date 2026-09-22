@@ -5,7 +5,7 @@ const GRID_SIZE = 20
 const GRID_MAJOR_EVERY = 5
 const GRID_MINOR_COLOR = '#2a2b33'
 const GRID_MAJOR_COLOR = '#35363f'
-const ARTBOARD_FILL = '#1f2028'
+export const DEFAULT_ARTBOARD_FILL = '#1f2028'
 const ARTBOARD_STROKE = '#35363f'
 
 export function drawBackground(
@@ -13,13 +13,18 @@ export function drawBackground(
   width: number,
   height: number,
   showGrid: boolean,
+  fillColor: string = DEFAULT_ARTBOARD_FILL,
+  fillOpacity: number = 1,
 ) {
   layer.removeChildren()
+
+  const color = new paper.Color(fillColor)
+  color.alpha = fillOpacity
 
   new paper.Path.Rectangle({
     point: [0, 0],
     size: [width, height],
-    fillColor: ARTBOARD_FILL,
+    fillColor: color,
     strokeColor: ARTBOARD_STROKE,
     strokeWidth: 1,
     parent: layer,

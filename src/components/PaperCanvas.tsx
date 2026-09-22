@@ -24,6 +24,8 @@ import {
   listDocuments,
   setCurrentDocumentId,
   createDocumentId,
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_OPACITY,
 } from '../documents'
 
 const MIN_ZOOM = 0.1
@@ -35,10 +37,13 @@ const MAX_HISTORY = 100
 function PaperCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scopeRef = useRef<paper.PaperScope | null>(null)
+  const scheduleAutosaveRef = useRef<(() => void) | null>(null)
 
   const width = useEditorStore((s) => s.canvas.width)
   const height = useEditorStore((s) => s.canvas.height)
   const gridVisible = useEditorStore((s) => s.canvas.gridVisible)
+  const backgroundColor = useEditorStore((s) => s.canvas.backgroundColor)
+  const backgroundOpacity = useEditorStore((s) => s.canvas.backgroundOpacity)
 
   // Store snapshot read inside Paper event handlers via getState() — handlers
   // are created once at mount and must always see current tool/selection.
@@ -77,6 +82,8 @@ function PaperCanvas() {
     ) {
       storeRef.current.setCanvasSize(initialDoc.payload.canvasWidth, initialDoc.payload.canvasHeight)
     }
+    storeRef.current.setBackgroundColor(initialDoc.payload.backgroundColor ?? DEFAULT_BACKGROUND_COLOR)
+    storeRef.current.setBackgroundOpacity(initialDoc.payload.backgroundOpacity ?? DEFAULT_BACKGROUND_OPACITY)
     storeRef.current.setCurrentDocument(currentDocId, currentDocName)
 
     let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
@@ -88,9 +95,12 @@ function PaperCanvas() {
           svg,
           canvasWidth: storeRef.current.canvas.width,
           canvasHeight: storeRef.current.canvas.height,
+          backgroundColor: storeRef.current.canvas.backgroundColor,
+          backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
         })
       }, AUTOSAVE_DEBOUNCE_MS)
     }
+    scheduleAutosaveRef.current = scheduleAutosave
 
     // --- Undo/redo history ---
     // Snapshot-based: each entry is a serialized content-layer SVG, committed
@@ -170,6 +180,8 @@ function PaperCanvas() {
         svg,
         canvasWidth: storeRef.current.canvas.width,
         canvasHeight: storeRef.current.canvas.height,
+        backgroundColor: storeRef.current.canvas.backgroundColor,
+        backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
       })
     }
 
@@ -188,6 +200,8 @@ function PaperCanvas() {
       ) {
         storeRef.current.setCanvasSize(payload.canvasWidth, payload.canvasHeight)
       }
+      storeRef.current.setBackgroundColor(payload.backgroundColor ?? DEFAULT_BACKGROUND_COLOR)
+      storeRef.current.setBackgroundOpacity(payload.backgroundOpacity ?? DEFAULT_BACKGROUND_OPACITY)
       storeRef.current.clearSelection()
       history.length = 0
       future.length = 0
@@ -207,7 +221,13 @@ function PaperCanvas() {
     const createNewDocument = (name: string) => {
       flushAutosaveNow()
       const id = createDocumentId()
-      const payload: DocumentPayload = { svg: '', canvasWidth: 800, canvasHeight: 600 }
+      const payload: DocumentPayload = {
+        svg: '',
+        canvasWidth: 800,
+        canvasHeight: 600,
+        backgroundColor: DEFAULT_BACKGROUND_COLOR,
+        backgroundOpacity: DEFAULT_BACKGROUND_OPACITY,
+      }
       saveDocument(id, name, payload)
       loadDocumentIntoCanvas(id, name, payload)
     }
@@ -475,6 +495,7 @@ function PaperCanvas() {
     return () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
       resizeObserver.disconnect()
+      scheduleAutosaveRef.current = null
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       canvas.removeEventListener('wheel', handleWheel)
@@ -492,10 +513,11 @@ function PaperCanvas() {
     scope.activate()
     const backgroundLayer = scope.project.layers.find((l) => l.name === 'background')
     if (!backgroundLayer) return
-    drawBackground(backgroundLayer, width, height, gridVisible)
+    drawBackground(backgroundLayer, width, height, gridVisible, backgroundColor, backgroundOpacity)
     fitCanvasInView(scope.view, width, height)
     useEditorStore.getState().setViewTransform(getViewTransform(scope.view))
-  }, [width, height, gridVisible])
+    scheduleAutosaveRef.current?.()
+  }, [width, height, gridVisible, backgroundColor, backgroundOpacity])
 
   return <canvas ref={canvasRef} className="CanvasWrap-canvas" />
 }
