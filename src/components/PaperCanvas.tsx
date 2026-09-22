@@ -414,7 +414,10 @@ function PaperCanvas() {
       storeRef.current.setViewTransform(getViewTransform(scope.view))
     }
     resize()
-    window.addEventListener('resize', resize)
+    // ResizeObserver (not just window resize) so toggling the props panel — a flex
+    // layout change, not a window resize — still re-fits the view correctly.
+    const resizeObserver = new ResizeObserver(resize)
+    resizeObserver.observe(canvas)
 
     tools[storeRef.current.tool].activate()
     const unsubscribeTool = useEditorStore.subscribe((state, prevState) => {
@@ -471,7 +474,7 @@ function PaperCanvas() {
 
     return () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
-      window.removeEventListener('resize', resize)
+      resizeObserver.disconnect()
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       canvas.removeEventListener('wheel', handleWheel)

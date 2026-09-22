@@ -1,0 +1,56 @@
+.ZoomPill {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  z-index: 4;
+}
+
+.ZoomPill-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bv-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ZoomPill-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ZoomPill-btn:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
+.ZoomPill-btn[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}
+
+.ZoomPill-div {
+  width: 1px;
+  height: 18px;
+  background: var(--bv-border);
+}
+
+.ZoomPill-value {
+  font-size: 12px;
+  color: var(--bv-text-dim);
+  padding: 0 4px;
+  min-width: 36px;
+  text-align: center;
+}

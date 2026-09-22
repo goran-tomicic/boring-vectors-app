@@ -1,118 +1,68 @@
-import { useEditorStore, type Tool } from '../store/editorStore'
+import { useEffect, useRef, useState } from 'react'
+import { useEditorStore } from '../store/editorStore'
 import './TopBar.css'
 
-const TOOLS: { tool: Tool; label: string; title: string }[] = [
-  { tool: 'select', label: 'V', title: 'Select (V)' },
-  { tool: 'node', label: 'N', title: 'Node (N)' },
-  { tool: 'addPoint', label: '+', title: 'Add Point (+)' },
-  { tool: 'ruler', label: 'R', title: 'Ruler (R)' },
-  { tool: 'pen', label: 'P', title: 'Pen (P)' },
-  { tool: 'rectangle', label: '▭', title: 'Rectangle (M)' },
-  { tool: 'ellipse', label: '◯', title: 'Ellipse (L)' },
-]
-
-const MIN_CANVAS_SIZE = 100
-const MAX_CANVAS_SIZE = 4000
-
-function clampCanvasSize(value: number) {
-  if (Number.isNaN(value)) return MIN_CANVAS_SIZE
-  return Math.min(MAX_CANVAS_SIZE, Math.max(MIN_CANVAS_SIZE, value))
-}
-
 function TopBar() {
-  const tool = useEditorStore((s) => s.tool)
-  const setTool = useEditorStore((s) => s.setTool)
-  const canvasWidth = useEditorStore((s) => s.canvas.width)
-  const canvasHeight = useEditorStore((s) => s.canvas.height)
-  const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
-  const gridVisible = useEditorStore((s) => s.canvas.gridVisible)
-  const toggleGrid = useEditorStore((s) => s.toggleGrid)
-  const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
-  const requestDelete = useEditorStore((s) => s.requestDelete)
+  const currentDocumentName = useEditorStore((s) => s.currentDocumentName)
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const requestExport = useEditorStore((s) => s.requestExport)
   const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
-  const currentDocumentName = useEditorStore((s) => s.currentDocumentName)
   const openDocumentsModal = useEditorStore((s) => s.openDocumentsModal)
+
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [menuOpen])
+
+  const withMenuClose = (action: () => void) => () => {
+    action()
+    setMenuOpen(false)
+  }
 
   return (
     <header className="TopBar">
-      <div className="TopBar-group TopBar-tools">
-        {TOOLS.map(({ tool: t, label, title }) => (
-          <button
-            key={t}
-            type="button"
-            className="TopBar-tool"
-            title={title}
-            aria-pressed={tool === t}
-            onClick={() => setTool(t)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="TopBar-documentName">{currentDocumentName || 'Untitled'}</div>
 
-      <button
-        type="button"
-        className="TopBar-documentName"
-        onClick={openDocumentsModal}
-        title="Documents"
-      >
-        {currentDocumentName || 'Untitled'}
-      </button>
-
-      <div className="TopBar-group TopBar-canvasSize">
-        <input
-          type="number"
-          className="TopBar-sizeInput"
-          min={MIN_CANVAS_SIZE}
-          max={MAX_CANVAS_SIZE}
-          value={canvasWidth}
-          onChange={(e) => setCanvasSize(clampCanvasSize(Number(e.target.value)), canvasHeight)}
-        />
-        <span className="TopBar-sizeTimes">×</span>
-        <input
-          type="number"
-          className="TopBar-sizeInput"
-          min={MIN_CANVAS_SIZE}
-          max={MAX_CANVAS_SIZE}
-          value={canvasHeight}
-          onChange={(e) => setCanvasSize(canvasWidth, clampCanvasSize(Number(e.target.value)))}
-        />
-      </div>
-
-      <div className="TopBar-group TopBar-actions">
+      <div className="TopBar-menuWrap" ref={menuRef}>
         <button
           type="button"
-          className="TopBar-action"
-          title="Toggle grid (G)"
-          aria-pressed={gridVisible}
-          onClick={toggleGrid}
+          className="TopBar-menuButton"
+          title="Menu"
+          aria-pressed={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
         >
-          Grid
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <circle cx="3" cy="8" r="1.4" />
+            <circle cx="8" cy="8" r="1.4" />
+            <circle cx="13" cy="8" r="1.4" />
+          </svg>
         </button>
-        <button type="button" className="TopBar-action" onClick={openImportModal}>
-          Import
-        </button>
-        <button
-          type="button"
-          className="TopBar-action"
-          onClick={requestExport}
-          title="Copy SVG to clipboard"
-        >
-          Export
-        </button>
-        <button
-          type="button"
-          className="TopBar-action"
-          disabled={selectedPathIds.length === 0}
-          onClick={requestDelete}
-        >
-          Delete
-        </button>
-        <button type="button" className="TopBar-action" onClick={openSettingsModal}>
-          Settings
-        </button>
+
+        {menuOpen && (
+          <div className="TopBar-dropdown">
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openImportModal)}>
+              Import
+            </button>
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(requestExport)}>
+              Export
+            </button>
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openDocumentsModal)}>
+              Documents
+            </button>
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openSettingsModal)}>
+              Settings
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )

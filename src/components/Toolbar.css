@@ -1,0 +1,78 @@
+.Toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  z-index: 4;
+}
+
+.Toolbar-handle {
+  width: 14px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--bv-text-faint);
+  cursor: grab;
+  touch-action: none;
+}
+
+.Toolbar-handle:active {
+  cursor: grabbing;
+}
+
+.Toolbar-handle svg {
+  width: 6px;
+  height: 16px;
+}
+
+.Toolbar-div {
+  width: 1px;
+  height: 18px;
+  background: var(--bv-border);
+  margin: 0 2px;
+}
+
+.Toolbar-logo {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--bv-accent), #47bfff);
+  flex: 0 0 auto;
+}
+
+.Toolbar-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bv-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.Toolbar-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.Toolbar-btn:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}
+
+.Toolbar-btn[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}

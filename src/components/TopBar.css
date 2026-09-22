@@ -3,72 +3,82 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 24px;
   padding: 0 12px;
   background: var(--bv-panel);
   border-bottom: 1px solid var(--bv-border);
-}
-
-.TopBar-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.TopBar-tool,
-.TopBar-action {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--bv-text-dim);
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.TopBar-tool:hover,
-.TopBar-action:hover {
-  background: var(--bv-panel-raised);
-  color: var(--bv-text);
-}
-
-.TopBar-tool[aria-pressed='true'] {
-  background: var(--bv-accent-bg);
-  border-color: var(--bv-accent-border);
-  color: var(--bv-accent-text);
+  position: relative;
 }
 
 .TopBar-documentName {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--bv-text-dim);
-  padding: 6px 10px;
+  flex: 1 1 auto;
+  text-align: center;
   font-size: 12px;
-  max-width: 160px;
+  font-weight: 500;
+  color: var(--bv-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.TopBar-documentName:hover {
+.TopBar-menuWrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.TopBar-menuButton {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--bv-text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.TopBar-menuButton svg {
+  width: 16px;
+  height: 16px;
+}
+
+.TopBar-menuButton:hover {
   background: var(--bv-panel-raised);
   color: var(--bv-text);
 }
 
-.TopBar-canvasSize {
-  color: var(--bv-text-faint);
-  font-size: 12px;
+.TopBar-menuButton[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
 }
 
-.TopBar-sizeInput {
-  width: 56px;
-  background: var(--bv-panel-raised);
+.TopBar-dropdown {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  width: 160px;
+  background: var(--bv-panel);
   border: 1px solid var(--bv-border);
-  border-radius: 4px;
-  color: var(--bv-text);
-  padding: 4px 6px;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
 }
 
-.TopBar-actions {
-  margin-left: auto;
+.TopBar-dropdownItem {
+  background: transparent;
+  border: none;
+  color: var(--bv-text-dim);
+  padding: 7px 9px;
+  font-size: 12px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.TopBar-dropdownItem:hover {
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
 }
