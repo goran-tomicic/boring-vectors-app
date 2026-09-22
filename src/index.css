@@ -23,6 +23,8 @@
 
   /* Feedback */
   --bv-danger: #ff5c5c;
+  --bv-success: #4ade80;
+  --bv-warning: #fbbf24;
 
   /* Transparency indicator (color pickers) */
   --bv-checkerboard: repeating-conic-gradient(#3a3b45 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
