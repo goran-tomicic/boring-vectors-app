@@ -24,6 +24,9 @@
   /* Feedback */
   --bv-danger: #ff5c5c;
 
+  /* Transparency indicator (color pickers) */
+  --bv-checkerboard: repeating-conic-gradient(#3a3b45 0% 25%, transparent 0% 50%) 0 0 / 10px 10px;
+
   /* Layout */
   --bv-topbar-h: 52px;
   --bv-infobar-h: 28px;

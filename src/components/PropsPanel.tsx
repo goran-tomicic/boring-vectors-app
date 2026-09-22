@@ -1,12 +1,58 @@
 import { useEditorStore } from '../store/editorStore'
+import { MIN_CANVAS_SIZE, MAX_CANVAS_SIZE, clampCanvasSize } from '../canvasSize'
+import ColorPicker from './ColorPicker'
 import './PropsPanel.css'
 
 function PropsPanel() {
   const props = useEditorStore((s) => s.selectedPathProps)
   const requestPropsEdit = useEditorStore((s) => s.requestPropsEdit)
   const selectedCount = useEditorStore((s) => s.selectedPathIds.length)
+  const canvasWidth = useEditorStore((s) => s.canvas.width)
+  const canvasHeight = useEditorStore((s) => s.canvas.height)
+  const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
+  const backgroundColor = useEditorStore((s) => s.canvas.backgroundColor)
+  const setBackgroundColor = useEditorStore((s) => s.setBackgroundColor)
+  const backgroundOpacity = useEditorStore((s) => s.canvas.backgroundOpacity)
+  const setBackgroundOpacity = useEditorStore((s) => s.setBackgroundOpacity)
 
   const disabled = !props
+
+  if (!props && selectedCount === 0) {
+    return (
+      <aside className="PropsPanel">
+        <section className="PropsPanel-section">
+          <h3 className="PropsPanel-heading">Artboard</h3>
+          <div className="PropsPanel-row">
+            <label>W</label>
+            <input
+              type="number"
+              min={MIN_CANVAS_SIZE}
+              max={MAX_CANVAS_SIZE}
+              value={canvasWidth}
+              onChange={(e) => setCanvasSize(clampCanvasSize(Number(e.target.value)), canvasHeight)}
+            />
+            <label>H</label>
+            <input
+              type="number"
+              min={MIN_CANVAS_SIZE}
+              max={MAX_CANVAS_SIZE}
+              value={canvasHeight}
+              onChange={(e) => setCanvasSize(canvasWidth, clampCanvasSize(Number(e.target.value)))}
+            />
+          </div>
+          <div className="PropsPanel-row">
+            <label>Background</label>
+            <ColorPicker
+              value={backgroundColor}
+              onChange={setBackgroundColor}
+              opacity={backgroundOpacity}
+              onOpacityChange={setBackgroundOpacity}
+            />
+          </div>
+        </section>
+      </aside>
+    )
+  }
 
   return (
     <aside className="PropsPanel">
