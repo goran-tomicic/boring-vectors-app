@@ -17,11 +17,22 @@ export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
  * an absolute number — width/height cover most of the same "resize over time" use case without
  * that extra machinery.
  */
-// fillColorR/G/B are 0-255 channel values, deliberately three separate numeric properties
-// rather than a dedicated "color" keyframe type — reuses the same absolute-numeric machinery
-// as everything else instead of a parallel data shape. They're always keyed together (see
-// Timeline.tsx's color row), so a path either has all three or none.
-export type AnimatableProperty = 'opacity' | 'x' | 'y' | 'width' | 'height' | 'fillColorR' | 'fillColorG' | 'fillColorB'
+// fillColorR/G/B and strokeColorR/G/B are 0-255 channel values, deliberately separate numeric
+// properties rather than a dedicated "color" keyframe type — reuses the same absolute-numeric
+// machinery as everything else instead of a parallel data shape. Each trio is always keyed
+// together (see Timeline.tsx's color rows), so a path either has all three of one or none.
+export type AnimatableProperty =
+  | 'opacity'
+  | 'x'
+  | 'y'
+  | 'width'
+  | 'height'
+  | 'fillColorR'
+  | 'fillColorG'
+  | 'fillColorB'
+  | 'strokeColorR'
+  | 'strokeColorG'
+  | 'strokeColorB'
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const clean = hex.replace('#', '')
