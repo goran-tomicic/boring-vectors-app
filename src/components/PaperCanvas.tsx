@@ -28,7 +28,14 @@ import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_OPACITY,
 } from '../projects'
-import { createEmptyAnimationClip, evaluateProperty, type AnimatableProperty } from '../animation'
+import {
+  createEmptyAnimationClip,
+  evaluateProperty,
+  hasRestGeometry,
+  type AnimatableProperty,
+  type Easing,
+  type SegmentSnapshot,
+} from '../animation'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
@@ -72,9 +79,39 @@ function PaperCanvas() {
       for (const pathTrack of clip.tracks) {
         const path = findPathById(contentLayer, pathTrack.pathId)
         if (!path) continue
+
+        // Rotation/scale reset to a stored rest shape and reapply each frame, rather than
+        // transforming incrementally — Paper.js has no separate matrix to reset, so repeated
+        // relative scale()/rotate() calls would drift and compound. This must run before the
+        // opacity/x/y/width/height loop below so those apply on top of the transformed shape,
+        // not the rest shape.
+        if (pathTrack.restSegments && pathTrack.restCenter) {
+          const segments = pathTrack.restSegments.map(
+            (s: SegmentSnapshot) =>
+              new paper.Segment(
+                new paper.Point(s.point.x, s.point.y),
+                new paper.Point(s.handleIn.x, s.handleIn.y),
+                new paper.Point(s.handleOut.x, s.handleOut.y),
+              ),
+          )
+          path.removeSegments()
+          path.addSegments(segments)
+          const center = new paper.Point(pathTrack.restCenter.x, pathTrack.restCenter.y)
+          const scale = evaluateProperty(clip, pathTrack.pathId, 'scale', timeMs) ?? 1
+          const rotation = evaluateProperty(clip, pathTrack.pathId, 'rotation', timeMs) ?? 0
+          if (scale !== 1) path.scale(scale, center)
+          if (rotation !== 0) path.rotate(rotation, center)
+        }
+
         for (const propertyTrack of pathTrack.properties) {
-          if (propertyTrack.property.endsWith('ColorR') || propertyTrack.property.endsWith('ColorG') || propertyTrack.property.endsWith('ColorB')) {
-            continue // color trios are handled together below, not per-channel
+          if (
+            propertyTrack.property.endsWith('ColorR') ||
+            propertyTrack.property.endsWith('ColorG') ||
+            propertyTrack.property.endsWith('ColorB') ||
+            propertyTrack.property === 'rotation' ||
+            propertyTrack.property === 'scale'
+          ) {
+            continue // handled together above / not applied per-channel
           }
           const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
           if (value === null) continue
@@ -451,6 +488,26 @@ function PaperCanvas() {
       loadProjectIntoCanvas(id, name, payload)
     }
 
+    const handleTransformKeyframeRequest = (
+      pathId: string,
+      property: AnimatableProperty,
+      time: number,
+      value: number,
+      easing: Easing,
+    ) => {
+      const path = findPathById(contentLayer, pathId)
+      if (!path) return
+      if (!hasRestGeometry(storeRef.current.animation, pathId)) {
+        const segments: SegmentSnapshot[] = path.segments.map((s) => ({
+          point: { x: s.point.x, y: s.point.y },
+          handleIn: { x: s.handleIn.x, y: s.handleIn.y },
+          handleOut: { x: s.handleOut.x, y: s.handleOut.y },
+        }))
+        storeRef.current.setRestGeometry(pathId, segments, { x: path.bounds.center.x, y: path.bounds.center.y })
+      }
+      storeRef.current.setKeyframe(pathId, property, time, value, easing)
+    }
+
     const applyPropsEdit = (edit: PropsEdit) => {
       const { selectedPathIds, selectedSegmentIndex } = storeRef.current
       if (storeRef.current.isPlaying) return
@@ -675,6 +732,14 @@ function PaperCanvas() {
       ) {
         scope.activate()
         importProjectFile(state.importProjectFileRequest.name, state.importProjectFileRequest.payload)
+      }
+      if (
+        state.transformKeyframeRequest &&
+        state.transformKeyframeRequest.nonce !== prevState.transformKeyframeRequest?.nonce
+      ) {
+        scope.activate()
+        const req = state.transformKeyframeRequest
+        handleTransformKeyframeRequest(req.pathId, req.property, req.time, req.value, req.easing)
       }
       if (state.isPlaying !== prevState.isPlaying) {
         if (state.isPlaying) startPlaybackLoop()

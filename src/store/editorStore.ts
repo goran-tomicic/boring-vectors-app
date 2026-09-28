@@ -4,10 +4,12 @@ import {
   type AnimationClip,
   type AnimatableProperty,
   type Easing,
+  type SegmentSnapshot,
   createEmptyAnimationClip,
   withKeyframeSet,
   withKeyframeRemoved,
   withKeyframeMoved,
+  withRestGeometrySet,
 } from '../animation'
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
@@ -158,6 +160,29 @@ export interface EditorState {
   setKeyframe: (pathId: string, property: AnimatableProperty, time: number, value: number, easing?: Easing) => void
   removeKeyframe: (pathId: string, property: AnimatableProperty, time: number) => void
   moveKeyframe: (pathId: string, property: AnimatableProperty, oldTime: number, newTime: number) => void
+  /** Written by PaperCanvas only, in response to transformKeyframeRequest — captures a path's rest geometry once, the first time rotation/scale is keyframed for it. No-op if already captured. */
+  setRestGeometry: (pathId: string, segments: SegmentSnapshot[], center: { x: number; y: number }) => void
+  /**
+   * Nonce-based signal for PaperCanvas to set a rotation/scale keyframe — unlike other
+   * properties this can't be a plain store action (setKeyframe) because it first needs to
+   * capture the path's rest geometry from live Paper.js state, which only PaperCanvas can
+   * read (see CLAUDE.md's architectural rule).
+   */
+  transformKeyframeRequest: {
+    pathId: string
+    property: AnimatableProperty
+    time: number
+    value: number
+    easing: Easing
+    nonce: number
+  } | null
+  requestSetTransformKeyframe: (
+    pathId: string,
+    property: AnimatableProperty,
+    time: number,
+    value: number,
+    easing: Easing,
+  ) => void
   /** Figma-style Draw/Animate switch, shown in the Toolbar only when settings.animationEnabled is on. */
   appMode: AppMode
   setAppMode: (mode: AppMode) => void
@@ -268,6 +293,20 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({ animation: withKeyframeRemoved(state.animation, pathId, property, time) })),
   moveKeyframe: (pathId, property, oldTime, newTime) =>
     set((state) => ({ animation: withKeyframeMoved(state.animation, pathId, property, oldTime, newTime) })),
+  setRestGeometry: (pathId, segments, center) =>
+    set((state) => ({ animation: withRestGeometrySet(state.animation, pathId, segments, center) })),
+  transformKeyframeRequest: null,
+  requestSetTransformKeyframe: (pathId, property, time, value, easing) =>
+    set((state) => ({
+      transformKeyframeRequest: {
+        pathId,
+        property,
+        time,
+        value,
+        easing,
+        nonce: (state.transformKeyframeRequest?.nonce ?? 0) + 1,
+      },
+    })),
   appMode: 'draw',
   setAppMode: (mode) =>
     set((state) => ({

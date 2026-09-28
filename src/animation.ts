@@ -21,6 +21,11 @@ export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
 // properties rather than a dedicated "color" keyframe type — reuses the same absolute-numeric
 // machinery as everything else instead of a parallel data shape. Each trio is always keyed
 // together (see Timeline.tsx's color rows), so a path either has all three of one or none.
+// rotation (degrees) and scale (ratio, 1 = 100%) are absolute too, but unlike everything
+// else they can't be applied directly to the path's current state — Paper.js bakes
+// transforms into segment data rather than keeping a matrix, so "rotate to 45deg" only
+// means something relative to a fixed rest shape. See PathTrack.restSegments below and the
+// note on applyAnimationAtTime in PaperCanvas.tsx.
 export type AnimatableProperty =
   | 'opacity'
   | 'x'
@@ -33,6 +38,8 @@ export type AnimatableProperty =
   | 'strokeColorR'
   | 'strokeColorG'
   | 'strokeColorB'
+  | 'rotation'
+  | 'scale'
 
 export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const clean = hex.replace('#', '')
@@ -59,9 +66,25 @@ export interface PropertyTrack {
   keyframes: Keyframe[]
 }
 
+export interface SegmentSnapshot {
+  point: { x: number; y: number }
+  handleIn: { x: number; y: number }
+  handleOut: { x: number; y: number }
+}
+
 export interface PathTrack {
   pathId: string
   properties: PropertyTrack[]
+  /**
+   * The path's segment geometry and bounds center at the moment rotation or scale was first
+   * keyframed for it — captured once, from PaperCanvas.tsx (only it can read Paper.js state).
+   * Playback resets to this snapshot each frame, then applies the evaluated rotation/scale
+   * around restCenter, rather than rotating/scaling incrementally — Paper.js has no separate
+   * transform matrix to reset, so incremental application would drift and compound. Absent
+   * for paths that have never had rotation/scale keyframed.
+   */
+  restSegments?: SegmentSnapshot[]
+  restCenter?: { x: number; y: number }
 }
 
 export interface AnimationClip {
@@ -121,6 +144,29 @@ export function evaluateProperty(
     }
   }
   return keyframes[keyframes.length - 1].value
+}
+
+export function hasRestGeometry(clip: AnimationClip, pathId: string): boolean {
+  return clip.tracks.find((t) => t.pathId === pathId)?.restSegments !== undefined
+}
+
+/** Returns a new clip with the path's rest geometry set — no-op if it's already captured (see PathTrack.restSegments). */
+export function withRestGeometrySet(
+  clip: AnimationClip,
+  pathId: string,
+  segments: SegmentSnapshot[],
+  center: { x: number; y: number },
+): AnimationClip {
+  if (hasRestGeometry(clip, pathId)) return clip
+  const tracks = clip.tracks.map((t) => ({ ...t }))
+  let pathTrack = tracks.find((t) => t.pathId === pathId)
+  if (!pathTrack) {
+    pathTrack = { pathId, properties: [] }
+    tracks.push(pathTrack)
+  }
+  pathTrack.restSegments = segments
+  pathTrack.restCenter = center
+  return { ...clip, tracks }
 }
 
 /** Returns a new clip with the given path/property keyframe inserted or replaced (immutable, for Zustand). */

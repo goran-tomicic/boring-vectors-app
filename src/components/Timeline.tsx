@@ -14,16 +14,25 @@ interface PropertyDef {
   max: number
   step: number
   getLive: (props: SelectedPathProps) => number
+  /**
+   * Rotation/scale can't go through the plain setKeyframe action — the first keyframe for a
+   * path must capture its rest geometry from live Paper.js state first (see animation.ts's
+   * PathTrack.restSegments and PaperCanvas.tsx's handleTransformKeyframeRequest), so these
+   * route through requestSetTransformKeyframe instead.
+   */
+  needsRestGeometry?: boolean
 }
 
-// Opacity + position + size for now (docs/ROADMAP.md step 3.4) — rotation/ratio-scale
-// still to come, deferred pending a persisted "rest geometry" snapshot (see animation.ts).
 const PROPERTY_DEFS: PropertyDef[] = [
   { property: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, getLive: (p) => p.opacity },
   { property: 'x', label: 'X', min: -100000, max: 100000, step: 1, getLive: (p) => p.x },
   { property: 'y', label: 'Y', min: -100000, max: 100000, step: 1, getLive: (p) => p.y },
   { property: 'width', label: 'Width', min: 1, max: 100000, step: 1, getLive: (p) => p.width },
   { property: 'height', label: 'Height', min: 1, max: 100000, step: 1, getLive: (p) => p.height },
+  // No live rotation/scale reading exists (Paper.js doesn't track "applied rotation" as a
+  // separate number) — 0deg / 1x is simply what "no transform yet" means for a fresh path.
+  { property: 'rotation', label: 'Rotation', min: -3600, max: 3600, step: 1, getLive: () => 0, needsRestGeometry: true },
+  { property: 'scale', label: 'Scale', min: 0.01, max: 100, step: 0.05, getLive: () => 1, needsRestGeometry: true },
 ]
 
 type ColorPrefix = 'fillColor' | 'strokeColor'
@@ -48,12 +57,12 @@ function colorChannels(prefix: ColorPrefix): AnimatableProperty[] {
 const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
 
 const MIN_TIMELINE_HEIGHT = 90
-const MAX_TIMELINE_HEIGHT = 640
-// Tall enough to show all 7 rows (5 numeric + fill/stroke color) without scrolling when a
+const MAX_TIMELINE_HEIGHT = 720
+// Tall enough to show all 9 rows (7 numeric + fill/stroke color) without scrolling when a
 // path is selected — a short default meant scrolling was needed to reach the lower rows,
 // which also made automated keyframe-adding flaky (clicking a below-the-fold button
 // auto-scrolls the panel, shifting every element's position mid-interaction).
-const DEFAULT_TIMELINE_HEIGHT = 480
+const DEFAULT_TIMELINE_HEIGHT = 560
 
 function Timeline() {
   const setAppMode = useEditorStore((s) => s.setAppMode)
@@ -67,6 +76,7 @@ function Timeline() {
   const setKeyframe = useEditorStore((s) => s.setKeyframe)
   const removeKeyframe = useEditorStore((s) => s.removeKeyframe)
   const moveKeyframe = useEditorStore((s) => s.moveKeyframe)
+  const requestSetTransformKeyframe = useEditorStore((s) => s.requestSetTransformKeyframe)
   const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
   const selectedPathProps = useEditorStore((s) => s.selectedPathProps)
 
@@ -142,7 +152,11 @@ function Timeline() {
   const handleAddKeyframe = (def: PropertyDef) => {
     if (!selectedPathId) return
     const value = valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
-    setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
+    if (def.needsRestGeometry) {
+      requestSetTransformKeyframe(selectedPathId, def.property, playheadMs, value, easing)
+    } else {
+      setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
+    }
   }
 
   const liveColorHex = (def: ColorRowDef) =>
