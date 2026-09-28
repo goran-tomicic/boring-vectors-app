@@ -81,6 +81,16 @@ function PaperCanvas() {
             path.bounds = new paper.Rectangle(new paper.Point(value, path.bounds.y), path.bounds.size)
           } else if (propertyTrack.property === 'y') {
             path.bounds = new paper.Rectangle(new paper.Point(path.bounds.x, value), path.bounds.size)
+          } else if (propertyTrack.property === 'width') {
+            path.bounds = new paper.Rectangle(
+              path.bounds.point,
+              new paper.Size(Math.max(1, value), path.bounds.height),
+            )
+          } else if (propertyTrack.property === 'height') {
+            path.bounds = new paper.Rectangle(
+              path.bounds.point,
+              new paper.Size(path.bounds.width, Math.max(1, value)),
+            )
           }
         }
       }

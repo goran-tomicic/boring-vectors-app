@@ -16,18 +16,25 @@ interface PropertyDef {
   getLive: (props: SelectedPathProps) => number
 }
 
-// Opacity + position for now (docs/ROADMAP.md step 3.4) — scale/rotation/color still to come.
+// Opacity + position + size for now (docs/ROADMAP.md step 3.4) — rotation/ratio-scale/color
+// still to come, deferred pending a persisted "rest geometry" snapshot (see animation.ts).
 const PROPERTY_DEFS: PropertyDef[] = [
   { property: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, getLive: (p) => p.opacity },
   { property: 'x', label: 'X', min: -100000, max: 100000, step: 1, getLive: (p) => p.x },
   { property: 'y', label: 'Y', min: -100000, max: 100000, step: 1, getLive: (p) => p.y },
+  { property: 'width', label: 'Width', min: 1, max: 100000, step: 1, getLive: (p) => p.width },
+  { property: 'height', label: 'Height', min: 1, max: 100000, step: 1, getLive: (p) => p.height },
 ]
 
 const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
 
 const MIN_TIMELINE_HEIGHT = 90
 const MAX_TIMELINE_HEIGHT = 480
-const DEFAULT_TIMELINE_HEIGHT = 160
+// Tall enough to show all 5 property rows without scrolling when a path is selected
+// (content is ~362px at last count) — a short default meant scrolling was needed just to
+// reach the Width/Height rows, which also made resize-drag smoke tests flaky (clicking a
+// below-the-fold button auto-scrolls the panel, shifting every element's position).
+const DEFAULT_TIMELINE_HEIGHT = 380
 
 function Timeline() {
   const setAppMode = useEditorStore((s) => s.setAppMode)

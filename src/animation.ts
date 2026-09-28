@@ -7,8 +7,17 @@
 
 export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
 
-/** Properties keyframes can drive (docs/ROADMAP.md step 3.4 — opacity + position so far; scale/rotation/color still to come). */
-export type AnimatableProperty = 'opacity' | 'x' | 'y'
+/**
+ * Properties keyframes can drive (docs/ROADMAP.md step 3.4). All of these are stored and
+ * applied as absolute values (never relative deltas) so evaluating a keyframe never depends
+ * on whatever transient state the path happened to be in — see the note on applyAnimationAtTime
+ * in PaperCanvas.tsx. Rotation and ratio-based scale are deferred: Paper.js bakes transforms
+ * directly into path segments rather than keeping a separate matrix, so animating them
+ * correctly needs a persisted "rest geometry" snapshot to transform from each frame, not just
+ * an absolute number — width/height cover most of the same "resize over time" use case without
+ * that extra machinery.
+ */
+export type AnimatableProperty = 'opacity' | 'x' | 'y' | 'width' | 'height'
 
 export interface Keyframe {
   time: number
