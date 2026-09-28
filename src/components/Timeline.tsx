@@ -1,11 +1,33 @@
 import { useRef, useState } from 'react'
-import { useEditorStore } from '../store/editorStore'
-import { findPropertyTrack } from '../animation'
+import { useEditorStore, type SelectedPathProps } from '../store/editorStore'
+import { findPropertyTrack, type AnimatableProperty, type Easing } from '../animation'
 import './Timeline.css'
 
 function formatMs(ms: number) {
   return `${(ms / 1000).toFixed(2)}s`
 }
+
+interface PropertyDef {
+  property: AnimatableProperty
+  label: string
+  min: number
+  max: number
+  step: number
+  getLive: (props: SelectedPathProps) => number
+}
+
+// Opacity + position for now (docs/ROADMAP.md step 3.4) — scale/rotation/color still to come.
+const PROPERTY_DEFS: PropertyDef[] = [
+  { property: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, getLive: (p) => p.opacity },
+  { property: 'x', label: 'X', min: -100000, max: 100000, step: 1, getLive: (p) => p.x },
+  { property: 'y', label: 'Y', min: -100000, max: 100000, step: 1, getLive: (p) => p.y },
+]
+
+const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
+
+const MIN_TIMELINE_HEIGHT = 90
+const MAX_TIMELINE_HEIGHT = 480
+const DEFAULT_TIMELINE_HEIGHT = 160
 
 function Timeline() {
   const setAppMode = useEditorStore((s) => s.setAppMode)
@@ -22,127 +44,171 @@ function Timeline() {
   const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
   const selectedPathProps = useEditorStore((s) => s.selectedPathProps)
 
-  const trackRef = useRef<HTMLDivElement>(null)
-  const draggingKeyframeTime = useRef<number | null>(null)
+  const draggingKeyframe = useRef<{ property: AnimatableProperty; time: number } | null>(null)
+
+  const [height, setHeight] = useState(DEFAULT_TIMELINE_HEIGHT)
+  const handleResizeStart = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = height
+    const handleMove = (moveEvent: PointerEvent) => {
+      // Dragging the top-edge handle up should grow the panel (it's docked to the bottom).
+      const next = startHeight + (startY - moveEvent.clientY)
+      setHeight(Math.min(MAX_TIMELINE_HEIGHT, Math.max(MIN_TIMELINE_HEIGHT, next)))
+    }
+    const handleUp = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+    }
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp)
+  }
 
   const selectedPathId = selectedPathIds.length === 1 ? selectedPathIds[0] : null
-  const opacityTrack = selectedPathId ? findPropertyTrack(animation, selectedPathId, 'opacity') : undefined
 
-  // Value to write into the next keyframe — defaults to the path's live opacity but is
-  // user-editable, since capturing "whatever opacity happens to be right now" isn't enough
-  // to build a fade in/out (there's no other UI to change item opacity outside keyframes).
-  // Reset during render (not an effect) when the selection changes, per React's guidance
-  // for adjusting state from a prop change without an extra render.
-  const [keyframeValueOverride, setKeyframeValueOverride] = useState<number | null>(null)
+  // Per-property values to write into the next keyframe — default to the path's live
+  // values but are user-editable, since capturing "whatever it happens to be right now"
+  // isn't enough to build a fade or a move (there's no other UI to change these outside
+  // keyframes). Reset during render (not an effect) when the selection changes, per
+  // React's guidance for adjusting state from a prop change without an extra render.
+  const [valueOverrides, setValueOverrides] = useState<Partial<Record<AnimatableProperty, number>>>({})
   const [lastSelectedPathId, setLastSelectedPathId] = useState(selectedPathId)
   if (selectedPathId !== lastSelectedPathId) {
     setLastSelectedPathId(selectedPathId)
-    setKeyframeValueOverride(null)
+    setValueOverrides({})
   }
-  const keyframeValue = keyframeValueOverride ?? selectedPathProps?.opacity ?? 1
+  const [easing, setEasing] = useState<Easing>('linear')
 
-  const timeFromClientX = (clientX: number) => {
-    const el = trackRef.current
-    if (!el) return 0
-    const rect = el.getBoundingClientRect()
+  const timeFromX = (clientX: number, rect: DOMRect) => {
     const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1)
     return ratio * animation.durationMs
   }
 
-  const handleScrub = (e: React.MouseEvent) => {
-    setPlayhead(timeFromClientX(e.clientX))
+  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    setPlayhead(timeFromX(e.clientX, e.currentTarget.getBoundingClientRect()))
   }
 
-  const handleKeyframeMouseDown = (time: number) => (e: React.MouseEvent) => {
-    e.stopPropagation()
-    draggingKeyframeTime.current = time
+  const handleKeyframeMouseDown =
+    (property: AnimatableProperty, time: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+      e.stopPropagation()
+      draggingKeyframe.current = { property, time }
+      // Rows all share the same width/offset, so the clicked keyframe's own track row
+      // is a stable reference rect for the whole drag, even as the mouse leaves it.
+      const rect = e.currentTarget.parentElement!.getBoundingClientRect()
 
-    const handleMove = (moveEvent: MouseEvent) => {
-      if (draggingKeyframeTime.current === null || !selectedPathId) return
-      const newTime = timeFromClientX(moveEvent.clientX)
-      moveKeyframe(selectedPathId, 'opacity', draggingKeyframeTime.current, newTime)
-      draggingKeyframeTime.current = newTime
+      const handleMove = (moveEvent: MouseEvent) => {
+        if (!draggingKeyframe.current || !selectedPathId) return
+        const newTime = timeFromX(moveEvent.clientX, rect)
+        moveKeyframe(selectedPathId, draggingKeyframe.current.property, draggingKeyframe.current.time, newTime)
+        draggingKeyframe.current = { property: draggingKeyframe.current.property, time: newTime }
+      }
+      const handleUp = () => {
+        draggingKeyframe.current = null
+        window.removeEventListener('mousemove', handleMove)
+        window.removeEventListener('mouseup', handleUp)
+      }
+      window.addEventListener('mousemove', handleMove)
+      window.addEventListener('mouseup', handleUp)
     }
-    const handleUp = () => {
-      draggingKeyframeTime.current = null
-      window.removeEventListener('mousemove', handleMove)
-      window.removeEventListener('mouseup', handleUp)
-    }
-    window.addEventListener('mousemove', handleMove)
-    window.addEventListener('mouseup', handleUp)
-  }
 
-  const handleAddKeyframe = () => {
+  const handleAddKeyframe = (def: PropertyDef) => {
     if (!selectedPathId) return
-    setKeyframe(selectedPathId, 'opacity', playheadMs, keyframeValue)
+    const value = valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
+    setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
   }
 
   return (
-    <div className="Timeline">
-      <div className="Timeline-controls">
-        <button type="button" onClick={isPlaying ? pause : play} title={isPlaying ? 'Pause' : 'Play'}>
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        <span className="Timeline-time">
-          {formatMs(playheadMs)} / {formatMs(animation.durationMs)}
-        </span>
-        <label className="Timeline-durationLabel">
-          Duration (s)
-          <input
-            type="number"
-            min={0.1}
-            step={0.1}
-            value={(animation.durationMs / 1000).toFixed(2)}
-            onChange={(e) => setAnimationDuration(Number(e.target.value) * 1000)}
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => setAppMode('draw')}
-          title="Back to drawing"
-          className="Timeline-hideButton"
-        >
-          Done
-        </button>
-      </div>
-
-      <div className="Timeline-track" ref={trackRef} onMouseDown={handleScrub}>
-        <div className="Timeline-playhead" style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }} />
-        {opacityTrack?.keyframes.map((kf) => (
-          <div
-            key={kf.time}
-            className="Timeline-keyframe"
-            style={{ left: `${(kf.time / animation.durationMs) * 100}%` }}
-            onMouseDown={handleKeyframeMouseDown(kf.time)}
-            onDoubleClick={(e) => {
-              e.stopPropagation()
-              if (selectedPathId) removeKeyframe(selectedPathId, 'opacity', kf.time)
-            }}
-            title={`opacity ${kf.value.toFixed(2)} at ${formatMs(kf.time)} — double-click to delete`}
-          />
-        ))}
-      </div>
-
-      {selectedPathId ? (
-        <div className="Timeline-pathControls">
-          <label className="Timeline-opacityLabel">
-            Opacity
+    <div className="Timeline" style={{ height }}>
+      <div className="Timeline-resizeHandle" onPointerDown={handleResizeStart} title="Drag to resize" />
+      <div className="Timeline-body">
+        <div className="Timeline-controls">
+          <button type="button" onClick={isPlaying ? pause : play} title={isPlaying ? 'Pause' : 'Play'}>
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <span className="Timeline-time">
+            {formatMs(playheadMs)} / {formatMs(animation.durationMs)}
+          </span>
+          <label className="Timeline-durationLabel">
+            Duration (s)
             <input
               type="number"
-              min={0}
-              max={1}
-              step={0.05}
-              value={keyframeValue}
-              onChange={(e) => setKeyframeValueOverride(Number(e.target.value))}
+              min={0.1}
+              step={0.1}
+              value={(animation.durationMs / 1000).toFixed(2)}
+              onChange={(e) => setAnimationDuration(Number(e.target.value) * 1000)}
             />
           </label>
-          <button type="button" onClick={handleAddKeyframe}>
-            Set opacity keyframe at playhead
+          <label className="Timeline-durationLabel">
+            Easing
+            <select value={easing} onChange={(e) => setEasing(e.target.value as Easing)}>
+              {EASINGS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            onClick={() => setAppMode('draw')}
+            title="Back to drawing"
+            className="Timeline-hideButton"
+          >
+            Done
           </button>
         </div>
-      ) : (
-        <div className="Timeline-hint">Select a single path to add opacity keyframes.</div>
-      )}
+
+        {selectedPathId ? (
+          <div className="Timeline-tracks">
+            {PROPERTY_DEFS.map((def) => {
+              const track = findPropertyTrack(animation, selectedPathId, def.property)
+              const value =
+                valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
+              return (
+                <div key={def.property} className="Timeline-row">
+                  <div className="Timeline-rowHead">
+                    <span className="Timeline-rowLabel">{def.label}</span>
+                    <input
+                      type="number"
+                      min={def.min}
+                      max={def.max}
+                      step={def.step}
+                      value={value}
+                      onChange={(e) =>
+                        setValueOverrides((prev) => ({ ...prev, [def.property]: Number(e.target.value) }))
+                      }
+                    />
+                    <button type="button" onClick={() => handleAddKeyframe(def)} title={`Set ${def.label} keyframe`}>
+                      Key
+                    </button>
+                  </div>
+                  <div className="Timeline-track" onMouseDown={handleScrub}>
+                    <div
+                      className="Timeline-playhead"
+                      style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
+                    />
+                    {track?.keyframes.map((kf) => (
+                      <div
+                        key={kf.time}
+                        className="Timeline-keyframe"
+                        style={{ left: `${(kf.time / animation.durationMs) * 100}%` }}
+                        onMouseDown={handleKeyframeMouseDown(def.property, kf.time)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
+                          removeKeyframe(selectedPathId, def.property, kf.time)
+                        }}
+                        title={`${def.label} ${kf.value.toFixed(2)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="Timeline-hint">Select a single path to add keyframes.</div>
+        )}
+      </div>
     </div>
   )
 }

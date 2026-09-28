@@ -75,7 +75,13 @@ function PaperCanvas() {
         for (const propertyTrack of pathTrack.properties) {
           const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
           if (value === null) continue
-          if (propertyTrack.property === 'opacity') path.opacity = value
+          if (propertyTrack.property === 'opacity') {
+            path.opacity = value
+          } else if (propertyTrack.property === 'x') {
+            path.bounds = new paper.Rectangle(new paper.Point(value, path.bounds.y), path.bounds.size)
+          } else if (propertyTrack.property === 'y') {
+            path.bounds = new paper.Rectangle(new paper.Point(path.bounds.x, value), path.bounds.size)
+          }
         }
       }
     }

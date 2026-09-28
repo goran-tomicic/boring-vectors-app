@@ -2,16 +2,48 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px;
   background: var(--bv-panel);
   border-top: 1px solid var(--bv-border);
+  position: relative;
+  min-height: 0;
+}
+
+.Timeline-resizeHandle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  z-index: 1;
+}
+
+.Timeline-resizeHandle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 50%;
+  width: 36px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: var(--bv-border);
+}
+
+.Timeline-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .Timeline-controls {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .Timeline-controls button {
@@ -38,8 +70,8 @@
   margin-left: auto;
 }
 
-.Timeline-durationLabel input {
-  width: 56px;
+.Timeline-durationLabel input,
+.Timeline-durationLabel select {
   background: var(--bv-panel-raised);
   border: 1px solid var(--bv-border);
   border-radius: 4px;
@@ -48,13 +80,60 @@
   font-size: 12px;
 }
 
+.Timeline-durationLabel input {
+  width: 56px;
+}
+
 .Timeline-hideButton {
   margin-left: 4px;
 }
 
+.Timeline-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.Timeline-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.Timeline-rowHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.Timeline-rowLabel {
+  font-size: 11px;
+  color: var(--bv-text-dim);
+  min-width: 44px;
+}
+
+.Timeline-rowHead input {
+  width: 64px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.Timeline-rowHead button {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
 .Timeline-track {
   position: relative;
-  height: 28px;
+  height: 24px;
   background: var(--bv-panel-raised);
   border: 1px solid var(--bv-border);
   border-radius: 4px;
@@ -81,41 +160,7 @@
   cursor: grab;
 }
 
-.Timeline-pathControls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.Timeline-opacityLabel {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--bv-text-dim);
-}
-
-.Timeline-opacityLabel input {
-  width: 56px;
-  background: var(--bv-panel-raised);
-  border: 1px solid var(--bv-border);
-  border-radius: 4px;
-  color: var(--bv-text);
-  padding: 3px 6px;
-  font-size: 12px;
-}
-
-.Timeline-pathControls button {
-  background: var(--bv-panel-raised);
-  border: 1px solid var(--bv-border);
-  border-radius: 4px;
-  color: var(--bv-text);
-  padding: 5px 10px;
-  font-size: 12px;
-}
-
 .Timeline-hint {
   font-size: 11px;
   color: var(--bv-text-faint);
 }
-
