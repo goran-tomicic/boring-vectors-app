@@ -8,8 +8,7 @@ function formatMs(ms: number) {
 }
 
 function Timeline() {
-  const timelineVisible = useEditorStore((s) => s.timelineVisible)
-  const toggleTimeline = useEditorStore((s) => s.toggleTimeline)
+  const setAppMode = useEditorStore((s) => s.setAppMode)
   const animation = useEditorStore((s) => s.animation)
   const playheadMs = useEditorStore((s) => s.playheadMs)
   const isPlaying = useEditorStore((s) => s.isPlaying)
@@ -41,14 +40,6 @@ function Timeline() {
     setKeyframeValueOverride(null)
   }
   const keyframeValue = keyframeValueOverride ?? selectedPathProps?.opacity ?? 1
-
-  if (!timelineVisible) {
-    return (
-      <button type="button" className="Timeline-showButton" onClick={toggleTimeline} title="Show timeline">
-        Timeline
-      </button>
-    )
-  }
 
   const timeFromClientX = (clientX: number) => {
     const el = trackRef.current
@@ -105,8 +96,13 @@ function Timeline() {
             onChange={(e) => setAnimationDuration(Number(e.target.value) * 1000)}
           />
         </label>
-        <button type="button" onClick={toggleTimeline} title="Hide timeline" className="Timeline-hideButton">
-          Hide
+        <button
+          type="button"
+          onClick={() => setAppMode('draw')}
+          title="Back to drawing"
+          className="Timeline-hideButton"
+        >
+          Done
         </button>
       </div>
 

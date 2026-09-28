@@ -9,6 +9,8 @@ function SettingsModal() {
   const setScrollZoomOnly = useEditorStore((s) => s.setScrollZoomOnly)
   const theme = useEditorStore((s) => s.settings.theme)
   const setTheme = useEditorStore((s) => s.setTheme)
+  const animationEnabled = useEditorStore((s) => s.settings.animationEnabled)
+  const setAnimationEnabled = useEditorStore((s) => s.setAnimationEnabled)
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
@@ -70,6 +72,15 @@ function SettingsModal() {
             onChange={(e) => setScrollZoomOnly(e.target.checked)}
           />
           Scroll to zoom (plain scroll zooms instead of panning)
+        </label>
+
+        <label className="SettingsModal-row">
+          <input
+            type="checkbox"
+            checked={animationEnabled}
+            onChange={(e) => setAnimationEnabled(e.target.checked)}
+          />
+          Animation timeline (beta — early, expect rough edges)
         </label>
 
         <div className="SettingsModal-actions">

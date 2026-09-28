@@ -8,12 +8,13 @@ import './CanvasWrap.css'
 
 function CanvasWrap() {
   const isPlaying = useEditorStore((s) => s.isPlaying)
+  const appMode = useEditorStore((s) => s.appMode)
 
   return (
     <div className={`CanvasWrap${isPlaying ? ' CanvasWrap--playing' : ''}`}>
       <PaperCanvas />
       <Rulers />
-      <Toolbar />
+      {appMode === 'draw' && <Toolbar />}
       <ZoomPill />
       <PanelToggle />
     </div>

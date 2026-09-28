@@ -42,6 +42,30 @@
   padding: 3px 7px;
 }
 
+.TopBar-modeSwitch {
+  display: flex;
+  flex: 0 0 auto;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 6px;
+  padding: 2px;
+  margin-right: 8px;
+}
+
+.TopBar-modeSwitch button {
+  border: none;
+  background: transparent;
+  color: var(--bv-text-dim);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+}
+
+.TopBar-modeSwitch button[aria-selected='true'] {
+  background: var(--bv-accent-bg);
+  color: var(--bv-accent-text);
+}
+
 .TopBar-menuWrap {
   position: relative;
   flex: 0 0 auto;
