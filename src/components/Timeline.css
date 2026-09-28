@@ -119,14 +119,3 @@
   color: var(--bv-text-faint);
 }
 
-.Timeline-showButton {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  margin: 6px 14px;
-  background: var(--bv-panel-raised);
-  border: 1px solid var(--bv-border);
-  border-radius: 4px;
-  color: var(--bv-text-dim);
-  padding: 4px 10px;
-  font-size: 11px;
-}

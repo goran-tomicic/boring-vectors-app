@@ -5,6 +5,9 @@ import './TopBar.css'
 function TopBar() {
   const currentProjectName = useEditorStore((s) => s.currentProjectName)
   const requestRenameProject = useEditorStore((s) => s.requestRenameProject)
+  const animationEnabled = useEditorStore((s) => s.settings.animationEnabled)
+  const appMode = useEditorStore((s) => s.appMode)
+  const setAppMode = useEditorStore((s) => s.setAppMode)
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const openExportModal = useEditorStore((s) => s.openExportModal)
   const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
@@ -62,6 +65,27 @@ function TopBar() {
           title="Click to rename"
         >
           {currentProjectName || 'Untitled'}
+        </div>
+      )}
+
+      {animationEnabled && (
+        <div className="TopBar-modeSwitch" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={appMode === 'draw'}
+            onClick={() => setAppMode('draw')}
+          >
+            Draw
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={appMode === 'animate'}
+            onClick={() => setAppMode('animate')}
+          >
+            Animate
+          </button>
         </div>
       )}
 

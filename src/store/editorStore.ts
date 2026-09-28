@@ -12,6 +12,8 @@ import {
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
 export type Theme = 'dark' | 'light'
+/** Figma-style top-level mode: 'draw' shows the drawing toolbar, 'animate' shows the Timeline instead. */
+export type AppMode = 'draw' | 'animate'
 
 /** Read-only snapshot of the selected path's Paper.js properties, refreshed by PaperCanvas on every selection/geometry change. */
 export interface SelectedPathProps {
@@ -59,6 +61,8 @@ interface CanvasState {
 interface SettingsState {
   scrollZoomOnly: boolean
   theme: Theme
+  /** Feature flag for the animation timeline (docs/ROADMAP.md step 3) — off by default while it's still a vertical slice. */
+  animationEnabled: boolean
 }
 
 /** Live view transform, pushed by PaperCanvas on every pan/zoom/resize so the Rulers component can track it without touching Paper.js. */
@@ -116,6 +120,7 @@ export interface EditorState {
   closeSettingsModal: () => void
   setScrollZoomOnly: (value: boolean) => void
   setTheme: (theme: Theme) => void
+  setAnimationEnabled: (value: boolean) => void
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
@@ -153,8 +158,9 @@ export interface EditorState {
   setKeyframe: (pathId: string, property: AnimatableProperty, time: number, value: number, easing?: Easing) => void
   removeKeyframe: (pathId: string, property: AnimatableProperty, time: number) => void
   moveKeyframe: (pathId: string, property: AnimatableProperty, oldTime: number, newTime: number) => void
-  timelineVisible: boolean
-  toggleTimeline: () => void
+  /** Figma-style Draw/Animate switch, shown in the Toolbar only when settings.animationEnabled is on. */
+  appMode: AppMode
+  setAppMode: (mode: AppMode) => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -162,7 +168,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedPathIds: [],
   selectedSegmentIndex: null,
   canvas: { width: 800, height: 600, gridVisible: true, zoom: 1, backgroundColor: '#1f2028', backgroundOpacity: 1 },
-  settings: { scrollZoomOnly: false, theme: 'dark' },
+  settings: { scrollZoomOnly: false, theme: 'dark', animationEnabled: false },
   status: 'Ready',
   setTool: (tool) => set({ tool }),
   setCanvasSize: (width, height) =>
@@ -213,6 +219,13 @@ export const useEditorStore = create<EditorState>((set) => ({
   setScrollZoomOnly: (value) =>
     set((state) => ({ settings: { ...state.settings, scrollZoomOnly: value } })),
   setTheme: (theme) => set((state) => ({ settings: { ...state.settings, theme } })),
+  setAnimationEnabled: (value) =>
+    set((state) => ({
+      settings: { ...state.settings, animationEnabled: value },
+      // Falling back out of the flag while parked in Animate mode would strand the user
+      // on a hidden Timeline with no way back to the drawing toolbar.
+      appMode: value ? state.appMode : 'draw',
+    })),
   viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
   setViewTransform: (transform) => set({ viewTransform: transform }),
   currentProjectId: '',
@@ -255,6 +268,13 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({ animation: withKeyframeRemoved(state.animation, pathId, property, time) })),
   moveKeyframe: (pathId, property, oldTime, newTime) =>
     set((state) => ({ animation: withKeyframeMoved(state.animation, pathId, property, oldTime, newTime) })),
-  timelineVisible: true,
-  toggleTimeline: () => set((state) => ({ timelineVisible: !state.timelineVisible })),
+  appMode: 'draw',
+  setAppMode: (mode) =>
+    set((state) => ({
+      appMode: mode,
+      // Entering Animate mode with a drawing tool still active would leave an edit tool
+      // "armed" underneath the Timeline; Select is the only tool that makes sense there
+      // (clicking a path to choose what to keyframe).
+      tool: mode === 'animate' ? 'select' : state.tool,
+    })),
 }))

@@ -11,6 +11,8 @@ import './App.css'
 function App() {
   const propsPanelVisible = useEditorStore((s) => s.propsPanelVisible)
   const theme = useEditorStore((s) => s.settings.theme)
+  const animationEnabled = useEditorStore((s) => s.settings.animationEnabled)
+  const appMode = useEditorStore((s) => s.appMode)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -23,7 +25,7 @@ function App() {
         <CanvasWrap />
         {propsPanelVisible && <PropsPanel />}
       </div>
-      <Timeline />
+      {animationEnabled && appMode === 'animate' && <Timeline />}
       <InfoBar />
       <Modals />
     </div>
