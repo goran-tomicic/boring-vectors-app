@@ -1,0 +1,98 @@
+.ExportModal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.ExportModal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--bv-panel);
+  border: 1px solid var(--bv-border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ExportModal-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bv-text);
+}
+
+.ExportModal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ExportModal-sectionTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bv-text-faint);
+}
+
+.ExportModal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ExportModal-row button {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.ExportModal-row button:hover {
+  border-color: var(--bv-accent-border);
+}
+
+.ExportModal-rasterOptions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ExportModal-scaleLabel,
+.ExportModal-checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--bv-text-dim);
+}
+
+.ExportModal-scaleLabel select {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.ExportModal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ExportModal-close {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid var(--bv-border);
+  background: var(--bv-panel-raised);
+  color: var(--bv-text);
+}

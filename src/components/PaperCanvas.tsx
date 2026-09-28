@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
-import { useEditorStore, type PropsEdit } from '../store/editorStore'
+import { useEditorStore, type PropsEdit, type ExportKind } from '../store/editorStore'
 import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngine/hitTest'
 import { clearOverlay, drawSelectionHighlight, drawNodeOverlay, computeSelectedPathProps } from '../canvasEngine/overlay'
@@ -17,16 +17,16 @@ import {
   MIN_SEGMENTS,
 } from '../canvasEngine/tools'
 import {
-  type DocumentPayload,
-  ensureCurrentDocument,
-  loadDocument,
-  saveDocument,
-  listDocuments,
-  setCurrentDocumentId,
-  createDocumentId,
+  type ProjectPayload,
+  ensureCurrentProject,
+  loadProject,
+  saveProject,
+  listProjects,
+  setCurrentProjectId,
+  createProjectId,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_OPACITY,
-} from '../documents'
+} from '../projects'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
@@ -62,11 +62,11 @@ function PaperCanvas() {
     const contentLayer = new scope.Layer({ name: 'content' })
     const overlayLayer = new scope.Layer({ name: 'overlay' })
 
-    let currentDocId: string
-    let currentDocName: string
-    const initialDoc = ensureCurrentDocument()
-    currentDocId = initialDoc.id
-    currentDocName = initialDoc.name
+    let currentProjectId: string
+    let currentProjectName: string
+    const initialDoc = ensureCurrentProject()
+    currentProjectId = initialDoc.id
+    currentProjectName = initialDoc.name
     if (initialDoc.payload.svg) {
       importSvgIntoContent(
         contentLayer,
@@ -84,14 +84,14 @@ function PaperCanvas() {
     }
     storeRef.current.setBackgroundColor(initialDoc.payload.backgroundColor ?? DEFAULT_BACKGROUND_COLOR)
     storeRef.current.setBackgroundOpacity(initialDoc.payload.backgroundOpacity ?? DEFAULT_BACKGROUND_OPACITY)
-    storeRef.current.setCurrentDocument(currentDocId, currentDocName)
+    storeRef.current.setCurrentProject(currentProjectId, currentProjectName)
 
     let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
     const scheduleAutosave = () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
       autosaveTimeout = setTimeout(() => {
         const svg = contentLayer.exportSVG({ asString: true }) as string
-        saveDocument(currentDocId, currentDocName, {
+        saveProject(currentProjectId, currentProjectName, {
           svg,
           canvasWidth: storeRef.current.canvas.width,
           canvasHeight: storeRef.current.canvas.height,
@@ -176,7 +176,7 @@ function PaperCanvas() {
         autosaveTimeout = undefined
       }
       const svg = contentLayer.exportSVG({ asString: true }) as string
-      saveDocument(currentDocId, currentDocName, {
+      saveProject(currentProjectId, currentProjectName, {
         svg,
         canvasWidth: storeRef.current.canvas.width,
         canvasHeight: storeRef.current.canvas.height,
@@ -185,15 +185,15 @@ function PaperCanvas() {
       })
     }
 
-    const loadDocumentIntoCanvas = (id: string, name: string, payload: DocumentPayload) => {
+    const loadProjectIntoCanvas = (id: string, name: string, payload: ProjectPayload) => {
       contentLayer.removeChildren()
       if (payload.svg) {
         importSvgIntoContent(contentLayer, payload.svg, payload.canvasWidth, payload.canvasHeight, false)
       }
-      currentDocId = id
-      currentDocName = name
-      setCurrentDocumentId(id)
-      storeRef.current.setCurrentDocument(id, name)
+      currentProjectId = id
+      currentProjectName = name
+      setCurrentProjectId(id)
+      storeRef.current.setCurrentProject(id, name)
       if (
         payload.canvasWidth !== storeRef.current.canvas.width ||
         payload.canvasHeight !== storeRef.current.canvas.height
@@ -209,27 +209,27 @@ function PaperCanvas() {
       redrawOverlay()
     }
 
-    const switchToDocument = (id: string) => {
-      if (id === currentDocId) return
+    const switchToProject = (id: string) => {
+      if (id === currentProjectId) return
       flushAutosaveNow()
-      const payload = loadDocument(id)
+      const payload = loadProject(id)
       if (!payload) return
-      const meta = listDocuments().find((doc) => doc.id === id)
-      loadDocumentIntoCanvas(id, meta?.name ?? 'Untitled', payload)
+      const meta = listProjects().find((doc) => doc.id === id)
+      loadProjectIntoCanvas(id, meta?.name ?? 'Untitled', payload)
     }
 
-    const createNewDocument = (name: string) => {
+    const createNewProject = (name: string) => {
       flushAutosaveNow()
-      const id = createDocumentId()
-      const payload: DocumentPayload = {
+      const id = createProjectId()
+      const payload: ProjectPayload = {
         svg: '',
         canvasWidth: 800,
         canvasHeight: 600,
         backgroundColor: DEFAULT_BACKGROUND_COLOR,
         backgroundOpacity: DEFAULT_BACKGROUND_OPACITY,
       }
-      saveDocument(id, name, payload)
-      loadDocumentIntoCanvas(id, name, payload)
+      saveProject(id, name, payload)
+      loadProjectIntoCanvas(id, name, payload)
     }
 
     const toolCtx: ToolContext = { scope, contentLayer, overlayLayer, storeRef, redrawOverlay, commitHistory }
@@ -273,13 +273,99 @@ function PaperCanvas() {
       commitHistory()
     }
 
-    const exportSvg = () => {
-      const svg = contentLayer.exportSVG({ asString: true }) as string
-      navigator.clipboard.writeText(svg).catch(() => {
-        const blob = new Blob([svg], { type: 'image/svg+xml' })
-        const url = URL.createObjectURL(blob)
-        window.open(url, '_blank')
+    const downloadBlob = (blob: Blob, filename: string) => {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    // contentLayer.exportSVG returns a bare <g> fragment (not a standalone <svg>
+    // document), so wrap it in an <svg> root sized to the artboard rather than
+    // Paper's tight bounding box of the paths — export always captures the full
+    // canvas area the user set up, not just where paths happen to be.
+    const buildStandaloneSvg = () => {
+      const raw = contentLayer.exportSVG({ asString: true }) as string
+      const { width: w, height: h } = storeRef.current.canvas
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${raw}</svg>`
+    }
+
+    const rasterize = (format: 'png' | 'jpg', scale: number, transparent: boolean): Promise<Blob> => {
+      const { width: w, height: h, backgroundColor } = storeRef.current.canvas
+      const svgUrl = URL.createObjectURL(
+        new Blob([buildStandaloneSvg()], { type: 'image/svg+xml' }),
+      )
+      return new Promise((resolve, reject) => {
+        const img = new Image()
+        img.onload = () => {
+          const offscreen = document.createElement('canvas')
+          offscreen.width = w * scale
+          offscreen.height = h * scale
+          const ctx = offscreen.getContext('2d')
+          URL.revokeObjectURL(svgUrl)
+          if (!ctx) {
+            reject(new Error('2D context unavailable'))
+            return
+          }
+          if (!transparent || format === 'jpg') {
+            ctx.fillStyle = backgroundColor
+            ctx.fillRect(0, 0, offscreen.width, offscreen.height)
+          }
+          ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height)
+          offscreen.toBlob(
+            (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
+            format === 'jpg' ? 'image/jpeg' : 'image/png',
+            0.92,
+          )
+        }
+        img.onerror = () => {
+          URL.revokeObjectURL(svgUrl)
+          reject(new Error('SVG image failed to load'))
+        }
+        img.src = svgUrl
       })
+    }
+
+    const handleExport = async (kind: ExportKind) => {
+      const filenameBase = currentProjectName || 'untitled'
+      if (kind.kind === 'copySvg') {
+        const svg = buildStandaloneSvg()
+        navigator.clipboard.writeText(svg).catch(() => {
+          downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
+        })
+      } else if (kind.kind === 'downloadSvg') {
+        downloadBlob(new Blob([buildStandaloneSvg()], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
+      } else if (kind.kind === 'downloadRaster') {
+        try {
+          const blob = await rasterize(kind.format, kind.scale, kind.transparent)
+          downloadBlob(blob, `${filenameBase}.${kind.format}`)
+        } catch {
+          // Best-effort export — silently drop on rasterization failure.
+        }
+      } else if (kind.kind === 'downloadProjectFile') {
+        const payload: ProjectPayload = {
+          svg: contentLayer.exportSVG({ asString: true }) as string,
+          canvasWidth: storeRef.current.canvas.width,
+          canvasHeight: storeRef.current.canvas.height,
+          backgroundColor: storeRef.current.canvas.backgroundColor,
+          backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
+        }
+        downloadBlob(
+          new Blob([JSON.stringify({ name: currentProjectName, ...payload }, null, 2)], {
+            type: 'application/json',
+          }),
+          `${filenameBase}.json`,
+        )
+      }
+    }
+
+    const importProjectFile = (name: string, payload: ProjectPayload) => {
+      flushAutosaveNow()
+      const id = createProjectId()
+      saveProject(id, name, payload)
+      loadProjectIntoCanvas(id, name, payload)
     }
 
     const applyPropsEdit = (edit: PropsEdit) => {
@@ -484,17 +570,24 @@ function PaperCanvas() {
         scope.activate()
         applyPropsEdit(state.propsEditRequest.edit)
       }
-      if (state.exportRequest !== prevState.exportRequest) {
+      if (state.exportRequest && state.exportRequest.nonce !== prevState.exportRequest?.nonce) {
         scope.activate()
-        exportSvg()
+        void handleExport(state.exportRequest.kind)
       }
-      if (state.switchDocumentRequest && state.switchDocumentRequest.nonce !== prevState.switchDocumentRequest?.nonce) {
+      if (state.switchProjectRequest && state.switchProjectRequest.nonce !== prevState.switchProjectRequest?.nonce) {
         scope.activate()
-        switchToDocument(state.switchDocumentRequest.id)
+        switchToProject(state.switchProjectRequest.id)
       }
-      if (state.newDocumentRequest && state.newDocumentRequest.nonce !== prevState.newDocumentRequest?.nonce) {
+      if (state.newProjectRequest && state.newProjectRequest.nonce !== prevState.newProjectRequest?.nonce) {
         scope.activate()
-        createNewDocument(state.newDocumentRequest.name)
+        createNewProject(state.newProjectRequest.name)
+      }
+      if (
+        state.importProjectFileRequest &&
+        state.importProjectFileRequest.nonce !== prevState.importProjectFileRequest?.nonce
+      ) {
+        scope.activate()
+        importProjectFile(state.importProjectFileRequest.name, state.importProjectFileRequest.payload)
       }
     })
 

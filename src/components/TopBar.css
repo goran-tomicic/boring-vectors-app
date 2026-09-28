@@ -9,7 +9,7 @@
   position: relative;
 }
 
-.TopBar-documentName {
+.TopBar-projectName {
   flex: 1 1 auto;
   text-align: center;
   font-size: 12px;
