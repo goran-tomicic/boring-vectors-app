@@ -1,3 +1,5 @@
+import type { AnimationClip } from './animation'
+
 export interface ProjectMeta {
   id: string
   name: string
@@ -10,6 +12,8 @@ export interface ProjectPayload {
   canvasHeight: number
   backgroundColor?: string
   backgroundOpacity?: number
+  /** Keyframe timeline data (docs/ROADMAP.md step 3) — absent on projects saved before animation existed. */
+  animation?: AnimationClip
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#1f2028'

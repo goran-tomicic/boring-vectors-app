@@ -11,7 +11,9 @@ An SVG editor _and_ maker for the web — import and edit existing paths down to
 
 ## Key architectural rule
 
-Paper.js's `Project` is the source of truth for path geometry (segments, handles, colors) — do **not** duplicate it into the Zustand store. The store only tracks UI-level state (active tool, selected path/segment id, canvas size, settings). Only the component that owns the `<canvas>` should touch the Paper.js `Project`/`Path` API directly; everything else reads or writes through the store or derived view-model props passed down.
+Paper.js's `Project` is the source of truth for a path's _current, static_ geometry (segments, handles, colors) — do **not** duplicate it into the Zustand store. The store only tracks UI-level state (active tool, selected path/segment id, canvas size, settings). Only the component that owns the `<canvas>` should touch the Paper.js `Project`/`Path` API directly; everything else reads or writes through the store or derived view-model props passed down.
+
+**Amendment (animation, `docs/ROADMAP.md` step 3):** a new store slice (`animation`) is the source of truth for _how that geometry changes over time_ — keyframe clips keyed by path id + property, each a sorted list of `{ time, value, easing }`. This is timeline data, not live geometry, so it doesn't belong in Paper.js and isn't a violation of the rule above. During playback, the animation engine writes interpolated values onto live Paper.js objects each frame; it never reads them back as truth. Editing tools (Select/Node/Add Point) and playback must not run concurrently — an edit/play mode switch prevents the timeline and direct manipulation fighting over the same Path.
 
 ## Build order
 

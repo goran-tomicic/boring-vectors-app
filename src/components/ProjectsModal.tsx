@@ -17,7 +17,7 @@ function ProjectsModal() {
   const requestSwitchProject = useEditorStore((s) => s.requestSwitchProject)
   const requestNewProject = useEditorStore((s) => s.requestNewProject)
   const requestImportProjectFile = useEditorStore((s) => s.requestImportProjectFile)
-  const setCurrentProject = useEditorStore((s) => s.setCurrentProject)
+  const requestRenameProject = useEditorStore((s) => s.requestRenameProject)
 
   // Bumped after a mutation to force a re-read of localStorage below — the
   // list itself is derived during render rather than mirrored into state.
@@ -54,8 +54,12 @@ function ProjectsModal() {
 
   const commitRename = (id: string) => {
     const name = editingName.trim() || 'Untitled'
-    renameProject(id, name)
-    if (id === currentProjectId) setCurrentProject(id, name)
+    if (id === currentProjectId) {
+      // Goes through PaperCanvas so its in-memory autosave name stays in sync — see requestRenameProject.
+      requestRenameProject(name)
+    } else {
+      renameProject(id, name)
+    }
     setEditingId(null)
     refresh()
   }

@@ -21,12 +21,14 @@ import {
   ensureCurrentProject,
   loadProject,
   saveProject,
+  renameProject,
   listProjects,
   setCurrentProjectId,
   createProjectId,
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_OPACITY,
 } from '../projects'
+import { createEmptyAnimationClip, evaluateProperty } from '../animation'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
@@ -62,6 +64,52 @@ function PaperCanvas() {
     const contentLayer = new scope.Layer({ name: 'content' })
     const overlayLayer = new scope.Layer({ name: 'overlay' })
 
+    // --- Animation playback ---
+    // Writes interpolated keyframe values onto live Paper.js paths each frame;
+    // never reads them back as truth (see CLAUDE.md's architectural amendment).
+    const applyAnimationAtTime = (timeMs: number) => {
+      const clip = storeRef.current.animation
+      for (const pathTrack of clip.tracks) {
+        const path = findPathById(contentLayer, pathTrack.pathId)
+        if (!path) continue
+        for (const propertyTrack of pathTrack.properties) {
+          const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
+          if (value === null) continue
+          if (propertyTrack.property === 'opacity') path.opacity = value
+        }
+      }
+    }
+
+    let playRafId: number | null = null
+    let playStartWallMs = 0
+    let playStartPlayheadMs = 0
+
+    const stopPlaybackLoop = () => {
+      if (playRafId !== null) cancelAnimationFrame(playRafId)
+      playRafId = null
+    }
+
+    const tickPlayback = () => {
+      const elapsed = performance.now() - playStartWallMs
+      const duration = storeRef.current.animation.durationMs
+      const next = playStartPlayheadMs + elapsed
+      if (next >= duration) {
+        storeRef.current.setPlayhead(duration)
+        storeRef.current.pause()
+        return
+      }
+      storeRef.current.setPlayhead(next)
+      playRafId = requestAnimationFrame(tickPlayback)
+    }
+
+    const startPlaybackLoop = () => {
+      playStartPlayheadMs =
+        storeRef.current.playheadMs >= storeRef.current.animation.durationMs ? 0 : storeRef.current.playheadMs
+      storeRef.current.setPlayhead(playStartPlayheadMs)
+      playStartWallMs = performance.now()
+      playRafId = requestAnimationFrame(tickPlayback)
+    }
+
     let currentProjectId: string
     let currentProjectName: string
     const initialDoc = ensureCurrentProject()
@@ -85,19 +133,24 @@ function PaperCanvas() {
     storeRef.current.setBackgroundColor(initialDoc.payload.backgroundColor ?? DEFAULT_BACKGROUND_COLOR)
     storeRef.current.setBackgroundOpacity(initialDoc.payload.backgroundOpacity ?? DEFAULT_BACKGROUND_OPACITY)
     storeRef.current.setCurrentProject(currentProjectId, currentProjectName)
+    storeRef.current.setAnimationClip(initialDoc.payload.animation ?? createEmptyAnimationClip())
+    storeRef.current.setPlayhead(0)
+    applyAnimationAtTime(0)
+
+    const buildCurrentPayload = (): ProjectPayload => ({
+      svg: contentLayer.exportSVG({ asString: true }) as string,
+      canvasWidth: storeRef.current.canvas.width,
+      canvasHeight: storeRef.current.canvas.height,
+      backgroundColor: storeRef.current.canvas.backgroundColor,
+      backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
+      animation: storeRef.current.animation,
+    })
 
     let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
     const scheduleAutosave = () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
       autosaveTimeout = setTimeout(() => {
-        const svg = contentLayer.exportSVG({ asString: true }) as string
-        saveProject(currentProjectId, currentProjectName, {
-          svg,
-          canvasWidth: storeRef.current.canvas.width,
-          canvasHeight: storeRef.current.canvas.height,
-          backgroundColor: storeRef.current.canvas.backgroundColor,
-          backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
-        })
+        saveProject(currentProjectId, currentProjectName, buildCurrentPayload())
       }, AUTOSAVE_DEBOUNCE_MS)
     }
     scheduleAutosaveRef.current = scheduleAutosave
@@ -175,14 +228,7 @@ function PaperCanvas() {
         clearTimeout(autosaveTimeout)
         autosaveTimeout = undefined
       }
-      const svg = contentLayer.exportSVG({ asString: true }) as string
-      saveProject(currentProjectId, currentProjectName, {
-        svg,
-        canvasWidth: storeRef.current.canvas.width,
-        canvasHeight: storeRef.current.canvas.height,
-        backgroundColor: storeRef.current.canvas.backgroundColor,
-        backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
-      })
+      saveProject(currentProjectId, currentProjectName, buildCurrentPayload())
     }
 
     const loadProjectIntoCanvas = (id: string, name: string, payload: ProjectPayload) => {
@@ -202,6 +248,10 @@ function PaperCanvas() {
       }
       storeRef.current.setBackgroundColor(payload.backgroundColor ?? DEFAULT_BACKGROUND_COLOR)
       storeRef.current.setBackgroundOpacity(payload.backgroundOpacity ?? DEFAULT_BACKGROUND_OPACITY)
+      storeRef.current.pause()
+      storeRef.current.setAnimationClip(payload.animation ?? createEmptyAnimationClip())
+      storeRef.current.setPlayhead(0)
+      applyAnimationAtTime(0)
       storeRef.current.clearSelection()
       history.length = 0
       future.length = 0
@@ -232,6 +282,13 @@ function PaperCanvas() {
       loadProjectIntoCanvas(id, name, payload)
     }
 
+    const renameCurrentProject = (name: string) => {
+      const trimmed = name.trim() || 'Untitled'
+      renameProject(currentProjectId, trimmed)
+      currentProjectName = trimmed
+      storeRef.current.setCurrentProject(currentProjectId, trimmed)
+    }
+
     const toolCtx: ToolContext = { scope, contentLayer, overlayLayer, storeRef, redrawOverlay, commitHistory }
     const selectTool = createSelectTool(toolCtx)
     const nodeTool = createNodeTool(toolCtx)
@@ -256,12 +313,13 @@ function PaperCanvas() {
 
     const deleteSelected = () => {
       const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
+      if (storeRef.current.isPlaying) return
 
       if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndex !== null) {
         const path = findPathById(contentLayer, selectedPathIds[0])
         if (path && path.segments.length > MIN_SEGMENTS) {
           path.removeSegment(selectedSegmentIndex)
-          storeRef.current.setSelection([String(path.id)])
+          storeRef.current.setSelection([path.name])
         }
       } else {
         for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
@@ -345,15 +403,8 @@ function PaperCanvas() {
           // Best-effort export — silently drop on rasterization failure.
         }
       } else if (kind.kind === 'downloadProjectFile') {
-        const payload: ProjectPayload = {
-          svg: contentLayer.exportSVG({ asString: true }) as string,
-          canvasWidth: storeRef.current.canvas.width,
-          canvasHeight: storeRef.current.canvas.height,
-          backgroundColor: storeRef.current.canvas.backgroundColor,
-          backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
-        }
         downloadBlob(
-          new Blob([JSON.stringify({ name: currentProjectName, ...payload }, null, 2)], {
+          new Blob([JSON.stringify({ name: currentProjectName, ...buildCurrentPayload() }, null, 2)], {
             type: 'application/json',
           }),
           `${filenameBase}.json`,
@@ -370,6 +421,7 @@ function PaperCanvas() {
 
     const applyPropsEdit = (edit: PropsEdit) => {
       const { selectedPathIds, selectedSegmentIndex } = storeRef.current
+      if (storeRef.current.isPlaying) return
       if (selectedPathIds.length !== 1) return
       const path = findPathById(contentLayer, selectedPathIds[0])
       if (!path) return
@@ -561,7 +613,7 @@ function PaperCanvas() {
           state.canvas.height,
         )
         if (imported) {
-          storeRef.current.setSelection([String(imported.id)])
+          storeRef.current.setSelection([imported.name])
         }
         redrawOverlay()
         commitHistory()
@@ -578,6 +630,9 @@ function PaperCanvas() {
         scope.activate()
         switchToProject(state.switchProjectRequest.id)
       }
+      if (state.renameProjectRequest && state.renameProjectRequest.nonce !== prevState.renameProjectRequest?.nonce) {
+        renameCurrentProject(state.renameProjectRequest.name)
+      }
       if (state.newProjectRequest && state.newProjectRequest.nonce !== prevState.newProjectRequest?.nonce) {
         scope.activate()
         createNewProject(state.newProjectRequest.name)
@@ -589,10 +644,24 @@ function PaperCanvas() {
         scope.activate()
         importProjectFile(state.importProjectFileRequest.name, state.importProjectFileRequest.payload)
       }
+      if (state.isPlaying !== prevState.isPlaying) {
+        if (state.isPlaying) startPlaybackLoop()
+        else stopPlaybackLoop()
+      }
+      if (state.playheadMs !== prevState.playheadMs || state.animation !== prevState.animation) {
+        scope.activate()
+        applyAnimationAtTime(state.playheadMs)
+      }
+      // Keyframe/duration edits don't touch Paper.js geometry, so redrawOverlay() (the usual
+      // autosave trigger) never runs for them — schedule a save directly instead.
+      if (state.animation !== prevState.animation) {
+        scheduleAutosave()
+      }
     })
 
     return () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
+      stopPlaybackLoop()
       resizeObserver.disconnect()
       scheduleAutosaveRef.current = null
       window.removeEventListener('keydown', handleKeyDown)

@@ -148,6 +148,7 @@ export function computeSelectedPathProps(
     strokeWidth: path.strokeWidth,
     fillColor: path.fillColor ? colorToHex(path.fillColor) : null,
     fillOpacity: path.fillColor ? path.fillColor.alpha : 1,
+    opacity: path.opacity,
     nodeCount: path.segments.length,
     closed: path.closed,
   }

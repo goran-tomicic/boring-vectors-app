@@ -1,5 +1,14 @@
 import { create } from 'zustand'
 import type { ProjectPayload as ProjectFilePayload } from '../projects'
+import {
+  type AnimationClip,
+  type AnimatableProperty,
+  type Easing,
+  createEmptyAnimationClip,
+  withKeyframeSet,
+  withKeyframeRemoved,
+  withKeyframeMoved,
+} from '../animation'
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
 export type Theme = 'dark' | 'light'
@@ -18,6 +27,8 @@ export interface SelectedPathProps {
   strokeWidth: number
   fillColor: string | null
   fillOpacity: number
+  /** Paper.js's overall item opacity (distinct from fill/stroke alpha) — what the animation timeline's opacity track drives. */
+  opacity: number
   nodeCount: number
   closed: boolean
 }
@@ -108,10 +119,13 @@ export interface EditorState {
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
-  /** Reflects the currently open project; written by PaperCanvas on load/switch, or by ProjectsModal when renaming the open project. */
+  /** Reflects the currently open project; written by PaperCanvas only, in response to a load/switch/rename request. */
   currentProjectId: string
   currentProjectName: string
   setCurrentProject: (id: string, name: string) => void
+  /** Nonce-based signal for PaperCanvas to rename the currently open project (persisted + its own autosave name updated) — used by the TopBar inline name field and the Projects modal. */
+  renameProjectRequest: { name: string; nonce: number } | null
+  requestRenameProject: (name: string) => void
   projectsModalOpen: boolean
   openProjectsModal: () => void
   closeProjectsModal: () => void
@@ -123,6 +137,24 @@ export interface EditorState {
   requestNewProject: (name: string) => void
   propsPanelVisible: boolean
   togglePropsPanel: () => void
+
+  // --- Animation (docs/ROADMAP.md step 3) ---
+  /** Keyframe timeline data for the current project — see the "Amendment" note on the architectural rule in CLAUDE.md. */
+  animation: AnimationClip
+  /** Written by PaperCanvas only, on project load/switch/import. */
+  setAnimationClip: (clip: AnimationClip) => void
+  setAnimationDuration: (durationMs: number) => void
+  /** Current scrub position in ms; PaperCanvas applies interpolated values to Paper.js whenever this changes. */
+  playheadMs: number
+  setPlayhead: (ms: number) => void
+  isPlaying: boolean
+  play: () => void
+  pause: () => void
+  setKeyframe: (pathId: string, property: AnimatableProperty, time: number, value: number, easing?: Easing) => void
+  removeKeyframe: (pathId: string, property: AnimatableProperty, time: number) => void
+  moveKeyframe: (pathId: string, property: AnimatableProperty, oldTime: number, newTime: number) => void
+  timelineVisible: boolean
+  toggleTimeline: () => void
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -186,6 +218,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   currentProjectId: '',
   currentProjectName: '',
   setCurrentProject: (id, name) => set({ currentProjectId: id, currentProjectName: name }),
+  renameProjectRequest: null,
+  requestRenameProject: (name) =>
+    set((state) => ({
+      renameProjectRequest: { name, nonce: (state.renameProjectRequest?.nonce ?? 0) + 1 },
+    })),
   projectsModalOpen: false,
   openProjectsModal: () => set({ projectsModalOpen: true }),
   closeProjectsModal: () => set({ projectsModalOpen: false }),
@@ -201,4 +238,23 @@ export const useEditorStore = create<EditorState>((set) => ({
     })),
   propsPanelVisible: true,
   togglePropsPanel: () => set((state) => ({ propsPanelVisible: !state.propsPanelVisible })),
+
+  animation: createEmptyAnimationClip(),
+  setAnimationClip: (clip) => set({ animation: clip }),
+  setAnimationDuration: (durationMs) =>
+    set((state) => ({ animation: { ...state.animation, durationMs: Math.max(100, durationMs) } })),
+  playheadMs: 0,
+  setPlayhead: (ms) =>
+    set((state) => ({ playheadMs: Math.min(Math.max(ms, 0), state.animation.durationMs) })),
+  isPlaying: false,
+  play: () => set({ isPlaying: true }),
+  pause: () => set({ isPlaying: false }),
+  setKeyframe: (pathId, property, time, value, easing) =>
+    set((state) => ({ animation: withKeyframeSet(state.animation, pathId, property, time, value, easing) })),
+  removeKeyframe: (pathId, property, time) =>
+    set((state) => ({ animation: withKeyframeRemoved(state.animation, pathId, property, time) })),
+  moveKeyframe: (pathId, property, oldTime, newTime) =>
+    set((state) => ({ animation: withKeyframeMoved(state.animation, pathId, property, oldTime, newTime) })),
+  timelineVisible: true,
+  toggleTimeline: () => set((state) => ({ timelineVisible: !state.timelineVisible })),
 }))

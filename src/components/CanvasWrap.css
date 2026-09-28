@@ -11,3 +11,11 @@
   width: 100%;
   height: 100%;
 }
+
+/* While an animation is playing, editing tools must not fight the playback engine over
+   the same Paper.js paths (see CLAUDE.md's architectural amendment) — block interaction. */
+.CanvasWrap--playing .CanvasWrap-canvas,
+.CanvasWrap--playing .Toolbar {
+  pointer-events: none;
+  opacity: 0.85;
+}
