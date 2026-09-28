@@ -4,6 +4,7 @@ import './TopBar.css'
 
 function TopBar() {
   const currentProjectName = useEditorStore((s) => s.currentProjectName)
+  const requestRenameProject = useEditorStore((s) => s.requestRenameProject)
   const openImportModal = useEditorStore((s) => s.openImportModal)
   const openExportModal = useEditorStore((s) => s.openExportModal)
   const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
@@ -11,6 +12,7 @@ function TopBar() {
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [editingName, setEditingName] = useState<string | null>(null)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -28,9 +30,40 @@ function TopBar() {
     setMenuOpen(false)
   }
 
+  const startEditingName = () => setEditingName(currentProjectName || 'Untitled')
+
+  const commitEditingName = () => {
+    if (editingName !== null) requestRenameProject(editingName)
+    setEditingName(null)
+  }
+
+  const cancelEditingName = () => setEditingName(null)
+
   return (
     <header className="TopBar">
-      <div className="TopBar-projectName">{currentProjectName || 'Untitled'}</div>
+      {editingName !== null ? (
+        <input
+          type="text"
+          className="TopBar-projectNameInput"
+          value={editingName}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => setEditingName(e.target.value)}
+          onBlur={commitEditingName}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitEditingName()
+            else if (e.key === 'Escape') cancelEditingName()
+          }}
+        />
+      ) : (
+        <div
+          className="TopBar-projectName"
+          onClick={startEditingName}
+          title="Click to rename"
+        >
+          {currentProjectName || 'Untitled'}
+        </div>
+      )}
 
       <div className="TopBar-menuWrap" ref={menuRef}>
         <button

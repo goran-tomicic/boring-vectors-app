@@ -1,6 +1,6 @@
 import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
-import { findPathById, findPathsByIds, hitTestPath, findNearestLocation } from './hitTest'
+import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
 import { type OverlayHit, hitTestOverlay } from './overlay'
 
 export const ACCENT = '#aa3bff'
@@ -37,7 +37,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
     dragPaths = []
 
     if (hit) {
-      const hitId = String(hit.id)
+      const hitId = hit.name
       if (event.modifiers.shift) {
         const already = selectedPathIds.includes(hitId)
         storeRef.current.setSelection(
@@ -93,7 +93,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       }
       const hitIds = contentLayer.children
         .filter((child): child is paper.Path => child instanceof paper.Path && rect.intersects(child.bounds))
-        .map((path) => String(path.id))
+        .map((path) => path.name)
       const nextIds = marqueeAdditive
         ? Array.from(new Set([...storeRef.current.selectedPathIds, ...hitIds]))
         : hitIds
@@ -122,7 +122,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
         dragPath = activePath
         drag = overlayHit
         if (overlayHit.type === 'anchor') {
-          storeRef.current.setSelection([String(activePath.id)], overlayHit.segmentIndex)
+          storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
         }
         redrawOverlay()
         return
@@ -132,7 +132,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
     dragPath = null
     drag = null
-    storeRef.current.setSelection(hit ? [String(hit.id)] : [])
+    storeRef.current.setSelection(hit ? [hit.name] : [])
     redrawOverlay()
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
@@ -189,7 +189,7 @@ export function createAddPointTool(ctx: ToolContext): paper.Tool {
     const location = findNearestLocation(contentLayer, event.point, ADD_POINT_TOLERANCE / zoom)
     if (!location || !(location.path instanceof paper.Path)) return
     location.path.divideAt(location)
-    storeRef.current.setSelection([String(location.path.id)])
+    storeRef.current.setSelection([location.path.name])
     redrawOverlay()
     commitHistory()
   }
@@ -290,7 +290,7 @@ export function createShapeTool(ctx: ToolContext, kind: 'rectangle' | 'ellipse')
       if (shapePreview.bounds.width < 1 || shapePreview.bounds.height < 1) {
         shapePreview.remove()
       } else {
-        storeRef.current.setSelection([String(shapePreview.id)])
+        storeRef.current.setSelection([ensurePathName(shapePreview)])
         redrawOverlay()
         commitHistory()
       }
@@ -342,7 +342,7 @@ export function createPenTool(ctx: ToolContext): PenToolController {
     if (penPath.segments.length < 2) {
       penPath.remove()
     } else {
-      storeRef.current.setSelection([String(penPath.id)])
+      storeRef.current.setSelection([ensurePathName(penPath)])
     }
     penPath = null
     penDragging = false

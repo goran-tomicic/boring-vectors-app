@@ -2,9 +2,25 @@ import paper from 'paper'
 
 const SELECT_HIT_TOLERANCE = 6
 
+/** Stable identifier assigned to a path at creation time — see the note on findPathById below. */
+export function generatePathName(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+/** Ensures a path has a stable name, assigning one if it's missing (e.g. pasted SVG with no id attribute). */
+export function ensurePathName(path: paper.Path): string {
+  if (!path.name) path.name = generatePathName()
+  return path.name
+}
+
+// Keyed by path.name, not Paper.js's auto-incrementing .id — .id is a per-session counter
+// that gets reassigned on every reload/re-import, so it can't identify a path across saves.
+// .name is assigned once at path-creation time (see svgIO.ts, tools.ts) and round-trips
+// through SVG export/import as the standard "id" attribute, so it stays stable.
 export function findPathById(contentLayer: paper.Layer, id: string | null): paper.Path | null {
   if (!id) return null
-  const match = contentLayer.children.find((child) => String(child.id) === id)
+  const match = contentLayer.children.find((child) => child.name === id)
   return match instanceof paper.Path ? match : null
 }
 

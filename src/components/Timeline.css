@@ -1,0 +1,132 @@
+.Timeline {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bv-panel);
+  border-top: 1px solid var(--bv-border);
+}
+
+.Timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.Timeline-controls button {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.Timeline-time {
+  font: 11px/1 var(--bv-mono);
+  color: var(--bv-text-dim);
+  min-width: 90px;
+}
+
+.Timeline-durationLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--bv-text-dim);
+  margin-left: auto;
+}
+
+.Timeline-durationLabel input {
+  width: 56px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.Timeline-hideButton {
+  margin-left: 4px;
+}
+
+.Timeline-track {
+  position: relative;
+  height: 28px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.Timeline-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--bv-accent-border);
+  pointer-events: none;
+}
+
+.Timeline-keyframe {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: var(--bv-accent-bg);
+  border: 1px solid var(--bv-accent-border);
+  transform: translate(-50%, -50%) rotate(45deg);
+  cursor: grab;
+}
+
+.Timeline-pathControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.Timeline-opacityLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--bv-text-dim);
+}
+
+.Timeline-opacityLabel input {
+  width: 56px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
+.Timeline-pathControls button {
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text);
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.Timeline-hint {
+  font-size: 11px;
+  color: var(--bv-text-faint);
+}
+
+.Timeline-showButton {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  margin: 6px 14px;
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  color: var(--bv-text-dim);
+  padding: 4px 10px;
+  font-size: 11px;
+}

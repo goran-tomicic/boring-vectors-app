@@ -18,6 +18,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: text;
+}
+
+.TopBar-projectName:hover {
+  background: var(--bv-panel-raised);
+}
+
+.TopBar-projectNameInput {
+  flex: 1 1 auto;
+  max-width: 320px;
+  margin: 0 auto;
+  text-align: center;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bv-text);
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-accent-border);
+  border-radius: 4px;
+  padding: 3px 7px;
 }
 
 .TopBar-menuWrap {

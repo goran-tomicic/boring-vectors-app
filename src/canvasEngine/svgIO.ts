@@ -1,4 +1,5 @@
 import paper from 'paper'
+import { ensurePathName } from './hitTest'
 
 export function importSvgIntoContent(
   contentLayer: paper.Layer,
@@ -22,6 +23,10 @@ export function importSvgIntoContent(
   }
 
   if (paths.length === 0) return null
+
+  // Preserves names restored from the SVG's id attributes (round-tripped from a prior
+  // export — see hitTest.ts); only assigns fresh ones where missing, e.g. pasted SVG.
+  for (const path of paths) ensurePathName(path)
 
   if (center) {
     let bounds = paths[0].bounds
