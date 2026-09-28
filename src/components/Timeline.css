@@ -1,11 +1,16 @@
 .Timeline {
-  flex: 0 0 auto;
+  /* Docked as an overlay within .CanvasWrap (position: relative), not a flex layout
+     sibling — see the comment in CanvasWrap.tsx for why that matters for the Rulers. */
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   flex-direction: column;
   background: var(--bv-panel);
   border-top: 1px solid var(--bv-border);
-  position: relative;
-  min-height: 0;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
 }
 
 .Timeline-resizeHandle {
