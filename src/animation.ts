@@ -7,8 +7,8 @@
 
 export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
 
-/** Properties keyframes can drive. Starts with opacity only (docs/ROADMAP.md step 3.2); more land in 3.4. */
-export type AnimatableProperty = 'opacity'
+/** Properties keyframes can drive (docs/ROADMAP.md step 3.4 — opacity + position so far; scale/rotation/color still to come). */
+export type AnimatableProperty = 'opacity' | 'x' | 'y'
 
 export interface Keyframe {
   time: number
