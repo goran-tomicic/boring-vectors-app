@@ -17,7 +17,24 @@ export type Easing = 'linear' | 'easeIn' | 'easeOut' | 'easeInOut'
  * an absolute number — width/height cover most of the same "resize over time" use case without
  * that extra machinery.
  */
-export type AnimatableProperty = 'opacity' | 'x' | 'y' | 'width' | 'height'
+// fillColorR/G/B are 0-255 channel values, deliberately three separate numeric properties
+// rather than a dedicated "color" keyframe type — reuses the same absolute-numeric machinery
+// as everything else instead of a parallel data shape. They're always keyed together (see
+// Timeline.tsx's color row), so a path either has all three or none.
+export type AnimatableProperty = 'opacity' | 'x' | 'y' | 'width' | 'height' | 'fillColorR' | 'fillColorG' | 'fillColorB'
+
+export function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.slice(0, 2), 16)
+  const g = parseInt(clean.slice(2, 4), 16)
+  const b = parseInt(clean.slice(4, 6), 16)
+  return { r: Number.isNaN(r) ? 0 : r, g: Number.isNaN(g) ? 0 : g, b: Number.isNaN(b) ? 0 : b }
+}
+
+export function rgbToHex(r: number, g: number, b: number): string {
+  const clamp = (v: number) => Math.min(255, Math.max(0, Math.round(v)))
+  return `#${[r, g, b].map((v) => clamp(v).toString(16).padStart(2, '0')).join('')}`
+}
 
 export interface Keyframe {
   time: number
