@@ -3,10 +3,6 @@ import { useEditorStore, type SelectedPathProps } from '../store/editorStore'
 import { findPropertyTrack, hexToRgb, rgbToHex, type AnimatableProperty, type Easing } from '../animation'
 import './Timeline.css'
 
-// Fill color is three synced numeric channel tracks, not a dedicated data shape — see the
-// note in animation.ts. These are the properties that must always move together.
-const FILL_COLOR_CHANNELS: AnimatableProperty[] = ['fillColorR', 'fillColorG', 'fillColorB']
-
 function formatMs(ms: number) {
   return `${(ms / 1000).toFixed(2)}s`
 }
@@ -20,7 +16,7 @@ interface PropertyDef {
   getLive: (props: SelectedPathProps) => number
 }
 
-// Opacity + position + size for now (docs/ROADMAP.md step 3.4) — rotation/ratio-scale/color
+// Opacity + position + size for now (docs/ROADMAP.md step 3.4) — rotation/ratio-scale
 // still to come, deferred pending a persisted "rest geometry" snapshot (see animation.ts).
 const PROPERTY_DEFS: PropertyDef[] = [
   { property: 'opacity', label: 'Opacity', min: 0, max: 1, step: 0.05, getLive: (p) => p.opacity },
@@ -30,15 +26,34 @@ const PROPERTY_DEFS: PropertyDef[] = [
   { property: 'height', label: 'Height', min: 1, max: 100000, step: 1, getLive: (p) => p.height },
 ]
 
+type ColorPrefix = 'fillColor' | 'strokeColor'
+
+interface ColorRowDef {
+  prefix: ColorPrefix
+  label: string
+  getLiveHex: (props: SelectedPathProps) => string | null
+}
+
+// Each color is three synced numeric channel tracks (see animation.ts), not a dedicated
+// data shape — colorChannels() below always addresses all three together.
+const COLOR_ROW_DEFS: ColorRowDef[] = [
+  { prefix: 'fillColor', label: 'Fill Color', getLiveHex: (p) => p.fillColor },
+  { prefix: 'strokeColor', label: 'Stroke Color', getLiveHex: (p) => p.strokeColor },
+]
+
+function colorChannels(prefix: ColorPrefix): AnimatableProperty[] {
+  return [`${prefix}R`, `${prefix}G`, `${prefix}B`] as AnimatableProperty[]
+}
+
 const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
 
 const MIN_TIMELINE_HEIGHT = 90
-const MAX_TIMELINE_HEIGHT = 560
-// Tall enough to show all 5 property rows without scrolling when a path is selected
-// (content is ~362px at last count) — a short default meant scrolling was needed just to
-// reach the Width/Height rows, which also made resize-drag smoke tests flaky (clicking a
-// below-the-fold button auto-scrolls the panel, shifting every element's position).
-const DEFAULT_TIMELINE_HEIGHT = 430
+const MAX_TIMELINE_HEIGHT = 640
+// Tall enough to show all 7 rows (5 numeric + fill/stroke color) without scrolling when a
+// path is selected — a short default meant scrolling was needed to reach the lower rows,
+// which also made automated keyframe-adding flaky (clicking a below-the-fold button
+// auto-scrolls the panel, shifting every element's position mid-interaction).
+const DEFAULT_TIMELINE_HEIGHT = 480
 
 function Timeline() {
   const setAppMode = useEditorStore((s) => s.setAppMode)
@@ -83,12 +98,12 @@ function Timeline() {
   // keyframes). Reset during render (not an effect) when the selection changes, per
   // React's guidance for adjusting state from a prop change without an extra render.
   const [valueOverrides, setValueOverrides] = useState<Partial<Record<AnimatableProperty, number>>>({})
-  const [colorOverride, setColorOverride] = useState<string | null>(null)
+  const [colorOverrides, setColorOverrides] = useState<Partial<Record<ColorPrefix, string>>>({})
   const [lastSelectedPathId, setLastSelectedPathId] = useState(selectedPathId)
   if (selectedPathId !== lastSelectedPathId) {
     setLastSelectedPathId(selectedPathId)
     setValueOverrides({})
-    setColorOverride(null)
+    setColorOverrides({})
   }
   const [easing, setEasing] = useState<Easing>('linear')
 
@@ -130,38 +145,40 @@ function Timeline() {
     setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
   }
 
-  const liveColor = colorOverride ?? selectedPathProps?.fillColor ?? '#ffffff'
-  const fillColorRTrack = selectedPathId ? findPropertyTrack(animation, selectedPathId, 'fillColorR') : undefined
+  const liveColorHex = (def: ColorRowDef) =>
+    colorOverrides[def.prefix] ?? (selectedPathProps ? def.getLiveHex(selectedPathProps) : null) ?? '#ffffff'
 
-  const handleAddColorKeyframe = () => {
+  const handleAddColorKeyframe = (def: ColorRowDef) => {
     if (!selectedPathId) return
-    const { r, g, b } = hexToRgb(liveColor)
-    setKeyframe(selectedPathId, 'fillColorR', playheadMs, r, easing)
-    setKeyframe(selectedPathId, 'fillColorG', playheadMs, g, easing)
-    setKeyframe(selectedPathId, 'fillColorB', playheadMs, b, easing)
+    const { r, g, b } = hexToRgb(liveColorHex(def))
+    const [pr, pg, pb] = colorChannels(def.prefix)
+    setKeyframe(selectedPathId, pr, playheadMs, r, easing)
+    setKeyframe(selectedPathId, pg, playheadMs, g, easing)
+    setKeyframe(selectedPathId, pb, playheadMs, b, easing)
   }
 
-  const colorAtTime = (time: number): string => {
-    if (!selectedPathId) return liveColor
-    const [r, g, b] = FILL_COLOR_CHANNELS.map(
+  const colorAtTime = (def: ColorRowDef, time: number): string => {
+    if (!selectedPathId) return liveColorHex(def)
+    const [r, g, b] = colorChannels(def.prefix).map(
       (property) =>
         findPropertyTrack(animation, selectedPathId, property)?.keyframes.find((k) => k.time === time)?.value ?? 0,
     )
     return rgbToHex(r, g, b)
   }
 
-  const handleColorKeyframeMouseDown = (time: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleColorKeyframeMouseDown = (def: ColorRowDef, time: number) => (e: React.MouseEvent<HTMLDivElement>) => {
     e.stopPropagation()
-    draggingKeyframe.current = { property: 'fillColorR', time }
+    const [primaryChannel] = colorChannels(def.prefix)
+    draggingKeyframe.current = { property: primaryChannel, time }
     const rect = e.currentTarget.parentElement!.getBoundingClientRect()
 
     const handleMove = (moveEvent: MouseEvent) => {
       if (!draggingKeyframe.current || !selectedPathId) return
       const newTime = timeFromX(moveEvent.clientX, rect)
-      for (const property of FILL_COLOR_CHANNELS) {
+      for (const property of colorChannels(def.prefix)) {
         moveKeyframe(selectedPathId, property, draggingKeyframe.current.time, newTime)
       }
-      draggingKeyframe.current = { property: 'fillColorR', time: newTime }
+      draggingKeyframe.current = { property: primaryChannel, time: newTime }
     }
     const handleUp = () => {
       draggingKeyframe.current = null
@@ -172,9 +189,9 @@ function Timeline() {
     window.addEventListener('mouseup', handleUp)
   }
 
-  const handleRemoveColorKeyframe = (time: number) => {
+  const handleRemoveColorKeyframe = (def: ColorRowDef, time: number) => {
     if (!selectedPathId) return
-    for (const property of FILL_COLOR_CHANNELS) {
+    for (const property of colorChannels(def.prefix)) {
       removeKeyframe(selectedPathId, property, time)
     }
   }
@@ -267,44 +284,57 @@ function Timeline() {
               )
             })}
 
-            <div className="Timeline-row">
-              <div className="Timeline-rowHead">
-                <span className="Timeline-rowLabel">Fill Color</span>
-                <input
-                  type="color"
-                  value={liveColor}
-                  disabled={selectedPathProps?.fillColor == null}
-                  onChange={(e) => setColorOverride(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddColorKeyframe}
-                  disabled={selectedPathProps?.fillColor == null}
-                  title="Set Fill Color keyframe"
-                >
-                  Key
-                </button>
-              </div>
-              <div className="Timeline-track" onMouseDown={handleScrub}>
-                <div
-                  className="Timeline-playhead"
-                  style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
-                />
-                {fillColorRTrack?.keyframes.map((kf) => (
-                  <div
-                    key={kf.time}
-                    className="Timeline-keyframe"
-                    style={{ left: `${(kf.time / animation.durationMs) * 100}%`, background: colorAtTime(kf.time) }}
-                    onMouseDown={handleColorKeyframeMouseDown(kf.time)}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation()
-                      handleRemoveColorKeyframe(kf.time)
-                    }}
-                    title={`Fill Color ${colorAtTime(kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
-                  />
-                ))}
-              </div>
-            </div>
+            {COLOR_ROW_DEFS.map((def) => {
+              const [primaryChannel] = colorChannels(def.prefix)
+              const track = findPropertyTrack(animation, selectedPathId, primaryChannel)
+              const liveHex = liveColorHex(def)
+              const disabled = selectedPathProps ? def.getLiveHex(selectedPathProps) == null : true
+              return (
+                <div key={def.prefix} className="Timeline-row">
+                  <div className="Timeline-rowHead">
+                    <span className="Timeline-rowLabel">{def.label}</span>
+                    <input
+                      type="color"
+                      value={liveHex}
+                      disabled={disabled}
+                      onChange={(e) =>
+                        setColorOverrides((prev) => ({ ...prev, [def.prefix]: e.target.value }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddColorKeyframe(def)}
+                      disabled={disabled}
+                      title={`Set ${def.label} keyframe`}
+                    >
+                      Key
+                    </button>
+                  </div>
+                  <div className="Timeline-track" onMouseDown={handleScrub}>
+                    <div
+                      className="Timeline-playhead"
+                      style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
+                    />
+                    {track?.keyframes.map((kf) => (
+                      <div
+                        key={kf.time}
+                        className="Timeline-keyframe"
+                        style={{
+                          left: `${(kf.time / animation.durationMs) * 100}%`,
+                          background: colorAtTime(def, kf.time),
+                        }}
+                        onMouseDown={handleColorKeyframeMouseDown(def, kf.time)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
+                          handleRemoveColorKeyframe(def, kf.time)
+                        }}
+                        title={`${def.label} ${colorAtTime(def, kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <div className="Timeline-hint">Select a single path to add keyframes.</div>

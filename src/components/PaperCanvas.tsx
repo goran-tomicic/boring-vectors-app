@@ -28,7 +28,7 @@ import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_OPACITY,
 } from '../projects'
-import { createEmptyAnimationClip, evaluateProperty } from '../animation'
+import { createEmptyAnimationClip, evaluateProperty, type AnimatableProperty } from '../animation'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 10
@@ -73,7 +73,9 @@ function PaperCanvas() {
         const path = findPathById(contentLayer, pathTrack.pathId)
         if (!path) continue
         for (const propertyTrack of pathTrack.properties) {
-          if (propertyTrack.property.startsWith('fillColor')) continue // handled together below
+          if (propertyTrack.property.endsWith('ColorR') || propertyTrack.property.endsWith('ColorG') || propertyTrack.property.endsWith('ColorB')) {
+            continue // color trios are handled together below, not per-channel
+          }
           const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
           if (value === null) continue
           if (propertyTrack.property === 'opacity') {
@@ -95,14 +97,18 @@ function PaperCanvas() {
           }
         }
 
-        // Fill color is three separate numeric tracks (R/G/B) always keyed together (see
-        // Timeline.tsx), so it's only applied once all three evaluate to a value this frame.
-        const r = evaluateProperty(clip, pathTrack.pathId, 'fillColorR', timeMs)
-        const g = evaluateProperty(clip, pathTrack.pathId, 'fillColorG', timeMs)
-        const b = evaluateProperty(clip, pathTrack.pathId, 'fillColorB', timeMs)
-        if (r !== null && g !== null && b !== null) {
-          path.fillColor = new paper.Color(r / 255, g / 255, b / 255)
+        // Each color trio (R/G/B) is always keyed together (see Timeline.tsx), so it's only
+        // applied once all three channels evaluate to a value this frame.
+        const evalColor = (prefix: 'fillColor' | 'strokeColor'): paper.Color | null => {
+          const r = evaluateProperty(clip, pathTrack.pathId, `${prefix}R` as AnimatableProperty, timeMs)
+          const g = evaluateProperty(clip, pathTrack.pathId, `${prefix}G` as AnimatableProperty, timeMs)
+          const b = evaluateProperty(clip, pathTrack.pathId, `${prefix}B` as AnimatableProperty, timeMs)
+          return r !== null && g !== null && b !== null ? new paper.Color(r / 255, g / 255, b / 255) : null
         }
+        const fillColor = evalColor('fillColor')
+        if (fillColor) path.fillColor = fillColor
+        const strokeColor = evalColor('strokeColor')
+        if (strokeColor) path.strokeColor = strokeColor
       }
     }
 
