@@ -1,13 +1,15 @@
 import ImportModal from './ImportModal'
+import ExportModal from './ExportModal'
 import SettingsModal from './SettingsModal'
-import DocumentsModal from './DocumentsModal'
+import ProjectsModal from './ProjectsModal'
 
 function Modals() {
   return (
     <>
       <ImportModal />
+      <ExportModal />
       <SettingsModal />
-      <DocumentsModal />
+      <ProjectsModal />
     </>
   )
 }

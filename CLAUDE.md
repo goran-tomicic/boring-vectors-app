@@ -31,12 +31,18 @@ Follow `docs/SPEC.md` § Build Plan in order — don't jump ahead to later-step 
 - During the parity pass (steps 1–6), match the original prototype's interaction behavior exactly — tool names and keyboard shortcuts are load-bearing, not placeholders; check `docs/SPEC.md` § Feature Inventory and § Keyboard Shortcuts before changing any of them
 - Don't build step-7 features ahead of the parity pass unless asked
 
-## Direction reference (not near-term scope)
+## Direction reference
 
-[svgstudio.org](https://www.svgstudio.org/) — a browser-based SVG _animation_ editor with layers, a keyframe timeline, grouping (⌘G), 100-step undo, and direct-manipulation handles — is the product-polish bar to aim for eventually. It is **not** what step 7 or any near-term step means: v1 here stays path/node editing only. Don't add layers, groups, a timeline, or animation without being asked — revisit after the parity pass (steps 1–6) is done.
+[svgstudio.org](https://www.svgstudio.org/) — a browser-based SVG _animation_ editor with layers, a keyframe timeline, grouping (⌘G), 100-step undo, and direct-manipulation handles — was the product-polish bar to aim for eventually, kept out of scope until the parity pass finished. The parity pass and new-project scope are done (see Status), and a keyframe-timeline animation feature is now explicitly in scope — see `docs/ROADMAP.md`, which supersedes this section's earlier "don't add animation" guidance.
+
+## Post-v1 roadmap
+
+Work beyond the original 7-step build plan (multiple projects, export, animation) is tracked in `docs/ROADMAP.md`, not here — read it before touching projects/export/animation code. It also documents a pending amendment to the "Key architectural rule" above: animation keyframe data needs a new store slice as a second, explicit source of truth (timeline data, not live geometry), separate from Paper.js's `Project`. Apply that amendment when the animation step (step 3 of the roadmap) begins.
 
 ## Status
 
 All 7 build-order steps are done, including step 7's new-project scope (undo/redo, multi-select, named documents, ruler tool, numeric handle inputs, maker tools — pen + rectangle/ellipse). One deviation from the order above: Import was pulled forward to run right after Tools parity (step 3) instead of after Properties panel, since Properties panel needed real paths on canvas to test by hand — see the plan file for the reasoning. `docs/SPEC.md`'s Build Plan numbering doesn't reflect this reorder; treat this Status section as authoritative over that list for what's actually done.
+
+Post-v1 work (multiple projects, export, animation) is now underway per `docs/ROADMAP.md` — see that file's own Status section for progress.
 
 Automated test scaffolding (Vitest/Playwright) has not been set up — deferred by user request. All verification so far has been manual (dev server + one-off headless-browser scripts per change, not checked into the repo).

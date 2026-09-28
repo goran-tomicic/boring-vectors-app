@@ -3,11 +3,11 @@ import { useEditorStore } from '../store/editorStore'
 import './TopBar.css'
 
 function TopBar() {
-  const currentDocumentName = useEditorStore((s) => s.currentDocumentName)
+  const currentProjectName = useEditorStore((s) => s.currentProjectName)
   const openImportModal = useEditorStore((s) => s.openImportModal)
-  const requestExport = useEditorStore((s) => s.requestExport)
+  const openExportModal = useEditorStore((s) => s.openExportModal)
   const openSettingsModal = useEditorStore((s) => s.openSettingsModal)
-  const openDocumentsModal = useEditorStore((s) => s.openDocumentsModal)
+  const openProjectsModal = useEditorStore((s) => s.openProjectsModal)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -30,7 +30,7 @@ function TopBar() {
 
   return (
     <header className="TopBar">
-      <div className="TopBar-documentName">{currentDocumentName || 'Untitled'}</div>
+      <div className="TopBar-projectName">{currentProjectName || 'Untitled'}</div>
 
       <div className="TopBar-menuWrap" ref={menuRef}>
         <button
@@ -52,11 +52,11 @@ function TopBar() {
             <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openImportModal)}>
               Import
             </button>
-            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(requestExport)}>
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openExportModal)}>
               Export
             </button>
-            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openDocumentsModal)}>
-              Documents
+            <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openProjectsModal)}>
+              Projects
             </button>
             <button type="button" className="TopBar-dropdownItem" onClick={withMenuClose(openSettingsModal)}>
               Settings

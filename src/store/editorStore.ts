@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { ProjectPayload as ProjectFilePayload } from '../projects'
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
 export type Theme = 'dark' | 'light'
@@ -28,6 +29,12 @@ export type PropsEdit =
   | { kind: 'handleOut'; x: number; y: number }
   | { kind: 'stroke'; color?: string; opacity?: number; width?: number }
   | { kind: 'fill'; color: string | null; opacity?: number }
+
+export type ExportKind =
+  | { kind: 'copySvg' }
+  | { kind: 'downloadSvg' }
+  | { kind: 'downloadRaster'; format: 'png' | 'jpg'; scale: number; transparent: boolean }
+  | { kind: 'downloadProjectFile' }
 
 interface CanvasState {
   width: number
@@ -72,15 +79,21 @@ export interface EditorState {
   /** Incremented to signal a delete-selection request from outside PaperCanvas (e.g. the toolbar). */
   deleteRequest: number
   requestDelete: () => void
-  /** Incremented to signal an export request from outside PaperCanvas (e.g. the toolbar). */
-  exportRequest: number
-  requestExport: () => void
+  /** Nonce-based signal carrying the chosen export kind for PaperCanvas to perform — mirrors the deleteRequest pattern. */
+  exportRequest: { kind: ExportKind; nonce: number } | null
+  requestExport: (kind: ExportKind) => void
+  exportModalOpen: boolean
+  openExportModal: () => void
+  closeExportModal: () => void
   importModalOpen: boolean
   openImportModal: () => void
   closeImportModal: () => void
   /** Nonce-based signal carrying raw SVG text for PaperCanvas to import — mirrors the deleteRequest pattern. */
   importRequest: { svg: string; nonce: number }
   requestImport: (svg: string) => void
+  /** Nonce-based signal carrying an imported project file's payload for PaperCanvas to load as a new project. */
+  importProjectFileRequest: { name: string; payload: ProjectFilePayload; nonce: number } | null
+  requestImportProjectFile: (name: string, payload: ProjectFilePayload) => void
   /** Read-only; written by PaperCanvas only. */
   selectedPathProps: SelectedPathProps | null
   setSelectedPathProps: (props: SelectedPathProps | null) => void
@@ -95,19 +108,19 @@ export interface EditorState {
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
-  /** Reflects the currently open document; written by PaperCanvas on load/switch, or by DocumentsModal when renaming the open document. */
-  currentDocumentId: string
-  currentDocumentName: string
-  setCurrentDocument: (id: string, name: string) => void
-  documentsModalOpen: boolean
-  openDocumentsModal: () => void
-  closeDocumentsModal: () => void
-  /** Nonce-based signal for PaperCanvas to switch the live canvas to a different saved document. */
-  switchDocumentRequest: { id: string; nonce: number } | null
-  requestSwitchDocument: (id: string) => void
-  /** Nonce-based signal for PaperCanvas to save current content, then reset the canvas to a new blank document. */
-  newDocumentRequest: { name: string; nonce: number } | null
-  requestNewDocument: (name: string) => void
+  /** Reflects the currently open project; written by PaperCanvas on load/switch, or by ProjectsModal when renaming the open project. */
+  currentProjectId: string
+  currentProjectName: string
+  setCurrentProject: (id: string, name: string) => void
+  projectsModalOpen: boolean
+  openProjectsModal: () => void
+  closeProjectsModal: () => void
+  /** Nonce-based signal for PaperCanvas to switch the live canvas to a different saved project. */
+  switchProjectRequest: { id: string; nonce: number } | null
+  requestSwitchProject: (id: string) => void
+  /** Nonce-based signal for PaperCanvas to save current content, then reset the canvas to a new blank project. */
+  newProjectRequest: { name: string; nonce: number } | null
+  requestNewProject: (name: string) => void
   propsPanelVisible: boolean
   togglePropsPanel: () => void
 }
@@ -138,14 +151,23 @@ export const useEditorStore = create<EditorState>((set) => ({
   clearSelection: () => set({ selectedPathIds: [], selectedSegmentIndex: null }),
   deleteRequest: 0,
   requestDelete: () => set((state) => ({ deleteRequest: state.deleteRequest + 1 })),
-  exportRequest: 0,
-  requestExport: () => set((state) => ({ exportRequest: state.exportRequest + 1 })),
+  exportRequest: null,
+  requestExport: (kind) =>
+    set((state) => ({ exportRequest: { kind, nonce: (state.exportRequest?.nonce ?? 0) + 1 } })),
+  exportModalOpen: false,
+  openExportModal: () => set({ exportModalOpen: true }),
+  closeExportModal: () => set({ exportModalOpen: false }),
   importModalOpen: false,
   openImportModal: () => set({ importModalOpen: true }),
   closeImportModal: () => set({ importModalOpen: false }),
   importRequest: { svg: '', nonce: 0 },
   requestImport: (svg) =>
     set((state) => ({ importRequest: { svg, nonce: state.importRequest.nonce + 1 } })),
+  importProjectFileRequest: null,
+  requestImportProjectFile: (name, payload) =>
+    set((state) => ({
+      importProjectFileRequest: { name, payload, nonce: (state.importProjectFileRequest?.nonce ?? 0) + 1 },
+    })),
   selectedPathProps: null,
   setSelectedPathProps: (props) => set({ selectedPathProps: props }),
   propsEditRequest: null,
@@ -161,21 +183,21 @@ export const useEditorStore = create<EditorState>((set) => ({
   setTheme: (theme) => set((state) => ({ settings: { ...state.settings, theme } })),
   viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
   setViewTransform: (transform) => set({ viewTransform: transform }),
-  currentDocumentId: '',
-  currentDocumentName: '',
-  setCurrentDocument: (id, name) => set({ currentDocumentId: id, currentDocumentName: name }),
-  documentsModalOpen: false,
-  openDocumentsModal: () => set({ documentsModalOpen: true }),
-  closeDocumentsModal: () => set({ documentsModalOpen: false }),
-  switchDocumentRequest: null,
-  requestSwitchDocument: (id) =>
+  currentProjectId: '',
+  currentProjectName: '',
+  setCurrentProject: (id, name) => set({ currentProjectId: id, currentProjectName: name }),
+  projectsModalOpen: false,
+  openProjectsModal: () => set({ projectsModalOpen: true }),
+  closeProjectsModal: () => set({ projectsModalOpen: false }),
+  switchProjectRequest: null,
+  requestSwitchProject: (id) =>
     set((state) => ({
-      switchDocumentRequest: { id, nonce: (state.switchDocumentRequest?.nonce ?? 0) + 1 },
+      switchProjectRequest: { id, nonce: (state.switchProjectRequest?.nonce ?? 0) + 1 },
     })),
-  newDocumentRequest: null,
-  requestNewDocument: (name) =>
+  newProjectRequest: null,
+  requestNewProject: (name) =>
     set((state) => ({
-      newDocumentRequest: { name, nonce: (state.newDocumentRequest?.nonce ?? 0) + 1 },
+      newProjectRequest: { name, nonce: (state.newProjectRequest?.nonce ?? 0) + 1 },
     })),
   propsPanelVisible: true,
   togglePropsPanel: () => set((state) => ({ propsPanelVisible: !state.propsPanelVisible })),
