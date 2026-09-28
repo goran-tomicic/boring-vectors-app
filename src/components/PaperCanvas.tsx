@@ -73,6 +73,7 @@ function PaperCanvas() {
         const path = findPathById(contentLayer, pathTrack.pathId)
         if (!path) continue
         for (const propertyTrack of pathTrack.properties) {
+          if (propertyTrack.property.startsWith('fillColor')) continue // handled together below
           const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
           if (value === null) continue
           if (propertyTrack.property === 'opacity') {
@@ -92,6 +93,15 @@ function PaperCanvas() {
               new paper.Size(path.bounds.width, Math.max(1, value)),
             )
           }
+        }
+
+        // Fill color is three separate numeric tracks (R/G/B) always keyed together (see
+        // Timeline.tsx), so it's only applied once all three evaluate to a value this frame.
+        const r = evaluateProperty(clip, pathTrack.pathId, 'fillColorR', timeMs)
+        const g = evaluateProperty(clip, pathTrack.pathId, 'fillColorG', timeMs)
+        const b = evaluateProperty(clip, pathTrack.pathId, 'fillColorB', timeMs)
+        if (r !== null && g !== null && b !== null) {
+          path.fillColor = new paper.Color(r / 255, g / 255, b / 255)
         }
       }
     }

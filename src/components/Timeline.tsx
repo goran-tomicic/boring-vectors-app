@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react'
 import { useEditorStore, type SelectedPathProps } from '../store/editorStore'
-import { findPropertyTrack, type AnimatableProperty, type Easing } from '../animation'
+import { findPropertyTrack, hexToRgb, rgbToHex, type AnimatableProperty, type Easing } from '../animation'
 import './Timeline.css'
+
+// Fill color is three synced numeric channel tracks, not a dedicated data shape — see the
+// note in animation.ts. These are the properties that must always move together.
+const FILL_COLOR_CHANNELS: AnimatableProperty[] = ['fillColorR', 'fillColorG', 'fillColorB']
 
 function formatMs(ms: number) {
   return `${(ms / 1000).toFixed(2)}s`
@@ -29,12 +33,12 @@ const PROPERTY_DEFS: PropertyDef[] = [
 const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
 
 const MIN_TIMELINE_HEIGHT = 90
-const MAX_TIMELINE_HEIGHT = 480
+const MAX_TIMELINE_HEIGHT = 560
 // Tall enough to show all 5 property rows without scrolling when a path is selected
 // (content is ~362px at last count) — a short default meant scrolling was needed just to
 // reach the Width/Height rows, which also made resize-drag smoke tests flaky (clicking a
 // below-the-fold button auto-scrolls the panel, shifting every element's position).
-const DEFAULT_TIMELINE_HEIGHT = 380
+const DEFAULT_TIMELINE_HEIGHT = 430
 
 function Timeline() {
   const setAppMode = useEditorStore((s) => s.setAppMode)
@@ -79,10 +83,12 @@ function Timeline() {
   // keyframes). Reset during render (not an effect) when the selection changes, per
   // React's guidance for adjusting state from a prop change without an extra render.
   const [valueOverrides, setValueOverrides] = useState<Partial<Record<AnimatableProperty, number>>>({})
+  const [colorOverride, setColorOverride] = useState<string | null>(null)
   const [lastSelectedPathId, setLastSelectedPathId] = useState(selectedPathId)
   if (selectedPathId !== lastSelectedPathId) {
     setLastSelectedPathId(selectedPathId)
     setValueOverrides({})
+    setColorOverride(null)
   }
   const [easing, setEasing] = useState<Easing>('linear')
 
@@ -122,6 +128,55 @@ function Timeline() {
     if (!selectedPathId) return
     const value = valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
     setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
+  }
+
+  const liveColor = colorOverride ?? selectedPathProps?.fillColor ?? '#ffffff'
+  const fillColorRTrack = selectedPathId ? findPropertyTrack(animation, selectedPathId, 'fillColorR') : undefined
+
+  const handleAddColorKeyframe = () => {
+    if (!selectedPathId) return
+    const { r, g, b } = hexToRgb(liveColor)
+    setKeyframe(selectedPathId, 'fillColorR', playheadMs, r, easing)
+    setKeyframe(selectedPathId, 'fillColorG', playheadMs, g, easing)
+    setKeyframe(selectedPathId, 'fillColorB', playheadMs, b, easing)
+  }
+
+  const colorAtTime = (time: number): string => {
+    if (!selectedPathId) return liveColor
+    const [r, g, b] = FILL_COLOR_CHANNELS.map(
+      (property) =>
+        findPropertyTrack(animation, selectedPathId, property)?.keyframes.find((k) => k.time === time)?.value ?? 0,
+    )
+    return rgbToHex(r, g, b)
+  }
+
+  const handleColorKeyframeMouseDown = (time: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation()
+    draggingKeyframe.current = { property: 'fillColorR', time }
+    const rect = e.currentTarget.parentElement!.getBoundingClientRect()
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      if (!draggingKeyframe.current || !selectedPathId) return
+      const newTime = timeFromX(moveEvent.clientX, rect)
+      for (const property of FILL_COLOR_CHANNELS) {
+        moveKeyframe(selectedPathId, property, draggingKeyframe.current.time, newTime)
+      }
+      draggingKeyframe.current = { property: 'fillColorR', time: newTime }
+    }
+    const handleUp = () => {
+      draggingKeyframe.current = null
+      window.removeEventListener('mousemove', handleMove)
+      window.removeEventListener('mouseup', handleUp)
+    }
+    window.addEventListener('mousemove', handleMove)
+    window.addEventListener('mouseup', handleUp)
+  }
+
+  const handleRemoveColorKeyframe = (time: number) => {
+    if (!selectedPathId) return
+    for (const property of FILL_COLOR_CHANNELS) {
+      removeKeyframe(selectedPathId, property, time)
+    }
   }
 
   return (
@@ -211,6 +266,45 @@ function Timeline() {
                 </div>
               )
             })}
+
+            <div className="Timeline-row">
+              <div className="Timeline-rowHead">
+                <span className="Timeline-rowLabel">Fill Color</span>
+                <input
+                  type="color"
+                  value={liveColor}
+                  disabled={selectedPathProps?.fillColor == null}
+                  onChange={(e) => setColorOverride(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleAddColorKeyframe}
+                  disabled={selectedPathProps?.fillColor == null}
+                  title="Set Fill Color keyframe"
+                >
+                  Key
+                </button>
+              </div>
+              <div className="Timeline-track" onMouseDown={handleScrub}>
+                <div
+                  className="Timeline-playhead"
+                  style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
+                />
+                {fillColorRTrack?.keyframes.map((kf) => (
+                  <div
+                    key={kf.time}
+                    className="Timeline-keyframe"
+                    style={{ left: `${(kf.time / animation.durationMs) * 100}%`, background: colorAtTime(kf.time) }}
+                    onMouseDown={handleColorKeyframeMouseDown(kf.time)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation()
+                      handleRemoveColorKeyframe(kf.time)
+                    }}
+                    title={`Fill Color ${colorAtTime(kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="Timeline-hint">Select a single path to add keyframes.</div>
