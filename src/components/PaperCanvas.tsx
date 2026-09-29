@@ -34,7 +34,9 @@ import {
   hasRestGeometry,
   buildSmilAnimatesForPath,
   type AnimatableProperty,
+  type AnimationClip,
   type Easing,
+  type PathTrack,
   type SegmentSnapshot,
 } from '../animation'
 
@@ -75,65 +77,74 @@ function PaperCanvas() {
     // --- Animation playback ---
     // Writes interpolated keyframe values onto live Paper.js paths each frame;
     // never reads them back as truth (see CLAUDE.md's architectural amendment).
+    // Mutates `path`'s position/size/rotation/scale to match `pathTrack` at `timeMs` — shared
+    // between live playback (applied to the real path) and animated-SVG export (applied to an
+    // offscreen clone, sampled at many time points to build a dense <animate attributeName="d">
+    // — see buildGeometryAnimateForPath). Doesn't touch opacity/color; those are separate
+    // attribute animations, not geometry.
+    const applyGeometryAtTime = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip, timeMs: number) => {
+      // Rotation/scale reset to a stored rest shape and reapply each frame, rather than
+      // transforming incrementally — Paper.js has no separate matrix to reset, so repeated
+      // relative scale()/rotate() calls would drift and compound. This must run before the
+      // x/y/width/height loop below so those apply on top of the transformed shape, not the
+      // rest shape.
+      if (pathTrack.restSegments && pathTrack.restCenter) {
+        const segments = pathTrack.restSegments.map(
+          (s: SegmentSnapshot) =>
+            new paper.Segment(
+              new paper.Point(s.point.x, s.point.y),
+              new paper.Point(s.handleIn.x, s.handleIn.y),
+              new paper.Point(s.handleOut.x, s.handleOut.y),
+            ),
+        )
+        path.removeSegments()
+        path.addSegments(segments)
+        const center = new paper.Point(pathTrack.restCenter.x, pathTrack.restCenter.y)
+        const scale = evaluateProperty(clip, pathTrack.pathId, 'scale', timeMs) ?? 1
+        const rotation = evaluateProperty(clip, pathTrack.pathId, 'rotation', timeMs) ?? 0
+        if (scale !== 1) path.scale(scale, center)
+        if (rotation !== 0) path.rotate(rotation, center)
+      }
+
+      for (const propertyTrack of pathTrack.properties) {
+        if (
+          propertyTrack.property !== 'x' &&
+          propertyTrack.property !== 'y' &&
+          propertyTrack.property !== 'width' &&
+          propertyTrack.property !== 'height'
+        ) {
+          continue
+        }
+        const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
+        if (value === null) continue
+        if (propertyTrack.property === 'x') {
+          path.bounds = new paper.Rectangle(new paper.Point(value, path.bounds.y), path.bounds.size)
+        } else if (propertyTrack.property === 'y') {
+          path.bounds = new paper.Rectangle(new paper.Point(path.bounds.x, value), path.bounds.size)
+        } else if (propertyTrack.property === 'width') {
+          path.bounds = new paper.Rectangle(
+            path.bounds.point,
+            new paper.Size(Math.max(1, value), path.bounds.height),
+          )
+        } else if (propertyTrack.property === 'height') {
+          path.bounds = new paper.Rectangle(
+            path.bounds.point,
+            new paper.Size(path.bounds.width, Math.max(1, value)),
+          )
+        }
+      }
+    }
+
     const applyAnimationAtTime = (timeMs: number) => {
       const clip = storeRef.current.animation
       for (const pathTrack of clip.tracks) {
         const path = findPathById(contentLayer, pathTrack.pathId)
         if (!path) continue
 
-        // Rotation/scale reset to a stored rest shape and reapply each frame, rather than
-        // transforming incrementally — Paper.js has no separate matrix to reset, so repeated
-        // relative scale()/rotate() calls would drift and compound. This must run before the
-        // opacity/x/y/width/height loop below so those apply on top of the transformed shape,
-        // not the rest shape.
-        if (pathTrack.restSegments && pathTrack.restCenter) {
-          const segments = pathTrack.restSegments.map(
-            (s: SegmentSnapshot) =>
-              new paper.Segment(
-                new paper.Point(s.point.x, s.point.y),
-                new paper.Point(s.handleIn.x, s.handleIn.y),
-                new paper.Point(s.handleOut.x, s.handleOut.y),
-              ),
-          )
-          path.removeSegments()
-          path.addSegments(segments)
-          const center = new paper.Point(pathTrack.restCenter.x, pathTrack.restCenter.y)
-          const scale = evaluateProperty(clip, pathTrack.pathId, 'scale', timeMs) ?? 1
-          const rotation = evaluateProperty(clip, pathTrack.pathId, 'rotation', timeMs) ?? 0
-          if (scale !== 1) path.scale(scale, center)
-          if (rotation !== 0) path.rotate(rotation, center)
-        }
+        applyGeometryAtTime(path, pathTrack, clip, timeMs)
 
-        for (const propertyTrack of pathTrack.properties) {
-          if (
-            propertyTrack.property.endsWith('ColorR') ||
-            propertyTrack.property.endsWith('ColorG') ||
-            propertyTrack.property.endsWith('ColorB') ||
-            propertyTrack.property === 'rotation' ||
-            propertyTrack.property === 'scale'
-          ) {
-            continue // handled together above / not applied per-channel
-          }
-          const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
-          if (value === null) continue
-          if (propertyTrack.property === 'opacity') {
-            path.opacity = value
-          } else if (propertyTrack.property === 'x') {
-            path.bounds = new paper.Rectangle(new paper.Point(value, path.bounds.y), path.bounds.size)
-          } else if (propertyTrack.property === 'y') {
-            path.bounds = new paper.Rectangle(new paper.Point(path.bounds.x, value), path.bounds.size)
-          } else if (propertyTrack.property === 'width') {
-            path.bounds = new paper.Rectangle(
-              path.bounds.point,
-              new paper.Size(Math.max(1, value), path.bounds.height),
-            )
-          } else if (propertyTrack.property === 'height') {
-            path.bounds = new paper.Rectangle(
-              path.bounds.point,
-              new paper.Size(path.bounds.width, Math.max(1, value)),
-            )
-          }
-        }
+        const opacityValue = evaluateProperty(clip, pathTrack.pathId, 'opacity', timeMs)
+        if (opacityValue !== null) path.opacity = opacityValue
 
         // Each color trio (R/G/B) is always keyed together (see Timeline.tsx), so it's only
         // applied once all three channels evaluate to a value this frame.
@@ -424,13 +435,45 @@ function PaperCanvas() {
     // why position/size/rotation/scale aren't included yet) into a copy of the static export,
     // keyed by matching each <path>'s id attribute back to its pathId (Paper.js round-trips
     // path.name through the SVG id attribute — see hitTest.ts).
+    // Position/size/rotation/scale don't map onto a single SVG attribute the way opacity/color
+    // do (see the note in animation.ts on buildSmilAnimatesForPath), so instead of asking the
+    // SVG renderer to interpolate between authored keyframes, this densely samples the path's
+    // geometry — reusing applyGeometryAtTime, the exact same code live playback uses — on an
+    // offscreen clone, and bakes the result into a single <animate attributeName="d">. Easing
+    // is already "baked in" by sampling at a fixed rate, so playback between samples is linear.
+    const GEOMETRY_EXPORT_FPS = 24
+    const buildGeometryAnimateForPath = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip): string | null => {
+      const hasGeometryTrack = pathTrack.properties.some((p) =>
+        (['x', 'y', 'width', 'height', 'rotation', 'scale'] as AnimatableProperty[]).includes(p.property),
+      )
+      if (!hasGeometryTrack) return null
+
+      const frameCount = Math.max(2, Math.round((clip.durationMs / 1000) * GEOMETRY_EXPORT_FPS))
+      const clone = path.clone({ insert: false }) as paper.Path
+      const dValues: string[] = []
+      for (let i = 0; i <= frameCount; i++) {
+        applyGeometryAtTime(clone, pathTrack, clip, (i / frameCount) * clip.durationMs)
+        dValues.push(clone.pathData)
+      }
+
+      if (dValues.every((d) => d === dValues[0])) return null // no real motion — skip
+
+      const keyTimes = dValues.map((_, i) => (i / frameCount).toFixed(4)).join(';')
+      return `<animate attributeName="d" values="${dValues.join(';')}" keyTimes="${keyTimes}" dur="${clip.durationMs}ms" begin="0s" calcMode="linear" fill="freeze"/>`
+    }
+
     const buildAnimatedSvg = () => {
       const doc = new DOMParser().parseFromString(buildStandaloneSvg(), 'image/svg+xml')
-      const durationMs = storeRef.current.animation.durationMs
-      for (const pathTrack of storeRef.current.animation.tracks) {
+      const clip = storeRef.current.animation
+      for (const pathTrack of clip.tracks) {
         const pathEl = doc.getElementById(pathTrack.pathId)
-        if (!pathEl) continue
-        for (const animateXml of buildSmilAnimatesForPath(pathTrack, durationMs)) {
+        const path = findPathById(contentLayer, pathTrack.pathId)
+        if (!pathEl || !path) continue
+        const animateXmls = [
+          ...buildSmilAnimatesForPath(pathTrack, clip.durationMs),
+          buildGeometryAnimateForPath(path, pathTrack, clip),
+        ].filter((xml): xml is string => xml !== null)
+        for (const animateXml of animateXmls) {
           const animateEl = new DOMParser()
             .parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${animateXml}</svg>`, 'image/svg+xml')
             .documentElement.firstElementChild
