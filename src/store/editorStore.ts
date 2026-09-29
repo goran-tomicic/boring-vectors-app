@@ -48,6 +48,8 @@ export type PropsEdit =
 export type ExportKind =
   | { kind: 'copySvg' }
   | { kind: 'downloadSvg' }
+  /** SMIL animation baked in — opacity/fill/stroke only for now, see the note in animation.ts. */
+  | { kind: 'downloadAnimatedSvg' }
   | { kind: 'downloadRaster'; format: 'png' | 'jpg'; scale: number; transparent: boolean }
   | { kind: 'downloadProjectFile' }
 

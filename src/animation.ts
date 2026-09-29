@@ -239,3 +239,113 @@ export function withKeyframeMoved(
     keyframe.easing,
   )
 }
+
+// --- SMIL export (docs/ROADMAP.md step 4) ---
+// Scoped to opacity/fill/stroke color for this round: they map 1:1 onto a native SVG
+// <animate attributeName="..."> with no ambiguity. Position/size/rotation/scale don't have
+// an equally direct mapping — x/y/width/height mutate a path's bounds in place with no
+// separate "authoring shape" to preserve, and rotation/scale already need a rest-geometry
+// snapshot just to play back correctly in-app — so baking them into portable SMIL/CSS is
+// deferred rather than shipped half-right.
+
+// Approximates each named easing as the closest standard CSS/SMIL cubic-bezier keySpline —
+// not identical to the quadratic curves evaluateProperty() uses, but visually equivalent and
+// the conventional mapping every export tool uses.
+const EASING_KEY_SPLINES: Record<Easing, string | null> = {
+  linear: null,
+  easeIn: '0.42 0 1 1',
+  easeOut: '0 0 0.58 1',
+  easeInOut: '0.42 0 0.58 1',
+}
+
+/** Keyframes padded so the first is at t=0 and the last at t=durationMs, matching evaluateProperty's boundary behavior (holds the nearest value outside the keyed range). Required because SMIL's keyTimes must span the full 0-1 range. */
+function padKeyframesToDuration(keyframes: Keyframe[], durationMs: number): Keyframe[] {
+  const padded = [...keyframes]
+  if (padded[0].time > 0) {
+    padded.unshift({ time: 0, value: padded[0].value, easing: padded[0].easing })
+  }
+  const last = padded[padded.length - 1]
+  if (last.time < durationMs) {
+    padded.push({ time: durationMs, value: last.value, easing: 'linear' })
+  }
+  return padded
+}
+
+/**
+ * A single <animate> element string for one numeric property track, or null if the track
+ * has too few keyframes to animate (a single keyframe is a constant, not an animation).
+ */
+export function buildSmilAnimate(
+  track: PropertyTrack,
+  attributeName: string,
+  durationMs: number,
+  formatValue: (v: number) => string,
+): string | null {
+  if (track.keyframes.length < 2) return null
+  const keyframes = padKeyframesToDuration(track.keyframes, durationMs)
+  const values = keyframes.map((k) => formatValue(k.value)).join(';')
+  const keyTimes = keyframes.map((k) => (k.time / durationMs).toFixed(4)).join(';')
+  const needsSpline = keyframes.slice(1).some((k) => k.easing !== 'linear')
+  const calcMode = needsSpline ? ' calcMode="spline"' : ''
+  const keySplines = needsSpline
+    ? ` keySplines="${keyframes
+        .slice(1)
+        .map((k) => EASING_KEY_SPLINES[k.easing] ?? '0 0 1 1')
+        .join(' ')}"`
+    : ''
+  return `<animate attributeName="${attributeName}" values="${values}" keyTimes="${keyTimes}" dur="${durationMs}ms" begin="0s" fill="freeze"${calcMode}${keySplines}/>`
+}
+
+/** All SMIL <animate> element strings this path track supports exporting (opacity, fill, stroke — see the note above). */
+/** A color's R/G/B channel tracks combined into a single <animate> on the given SVG color attribute (fill/stroke), or null if the color has fewer than 2 keyframes. R/G/B are always keyed together (see Timeline.tsx), so R's keyframe times are canonical. */
+function buildSmilColorAnimate(
+  track: PathTrack,
+  prefix: 'fillColor' | 'strokeColor',
+  attributeName: string,
+  durationMs: number,
+): string | null {
+  const rTrack = track.properties.find((p) => p.property === `${prefix}R`)
+  const gTrack = track.properties.find((p) => p.property === `${prefix}G`)
+  const bTrack = track.properties.find((p) => p.property === `${prefix}B`)
+  if (!rTrack || !gTrack || !bTrack || rTrack.keyframes.length < 2) return null
+
+  const valueAt = (channelTrack: PropertyTrack, time: number) =>
+    channelTrack.keyframes.find((k) => Math.abs(k.time - time) < 1)?.value ?? 0
+
+  const keyframes: Keyframe[] = rTrack.keyframes.map((k) => ({
+    time: k.time,
+    // Not an interpolated numeric value — a marker this loop resolves to a hex string per
+    // keyframe, below. The SVG renderer does the actual per-channel color interpolation
+    // between these hex strings; nothing in this file computes an "in-between" color.
+    value: k.time,
+    easing: k.easing,
+  }))
+  const hexAtTime = new Map(keyframes.map((k) => [k.time, rgbToHex(valueAt(rTrack, k.time), valueAt(gTrack, k.time), valueAt(bTrack, k.time))]))
+
+  return buildSmilAnimate(
+    { property: rTrack.property, keyframes },
+    attributeName,
+    durationMs,
+    (time) => hexAtTime.get(time) ?? '#000000',
+  )
+}
+
+export function buildSmilAnimatesForPath(track: PathTrack, durationMs: number): string[] {
+  const elements: string[] = []
+
+  const opacityTrack = track.properties.find((p) => p.property === 'opacity')
+  if (opacityTrack) {
+    const el = buildSmilAnimate(opacityTrack, 'opacity', durationMs, (v) => v.toFixed(3))
+    if (el) elements.push(el)
+  }
+
+  for (const [prefix, attributeName] of [
+    ['fillColor', 'fill'],
+    ['strokeColor', 'stroke'],
+  ] as const) {
+    const el = buildSmilColorAnimate(track, prefix, attributeName, durationMs)
+    if (el) elements.push(el)
+  }
+
+  return elements
+}

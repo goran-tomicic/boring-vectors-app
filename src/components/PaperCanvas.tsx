@@ -32,6 +32,7 @@ import {
   createEmptyAnimationClip,
   evaluateProperty,
   hasRestGeometry,
+  buildSmilAnimatesForPath,
   type AnimatableProperty,
   type Easing,
   type SegmentSnapshot,
@@ -419,6 +420,26 @@ function PaperCanvas() {
       return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${raw}</svg>`
     }
 
+    // Bakes SMIL <animate> elements (opacity/fill/stroke — see the note in animation.ts on
+    // why position/size/rotation/scale aren't included yet) into a copy of the static export,
+    // keyed by matching each <path>'s id attribute back to its pathId (Paper.js round-trips
+    // path.name through the SVG id attribute — see hitTest.ts).
+    const buildAnimatedSvg = () => {
+      const doc = new DOMParser().parseFromString(buildStandaloneSvg(), 'image/svg+xml')
+      const durationMs = storeRef.current.animation.durationMs
+      for (const pathTrack of storeRef.current.animation.tracks) {
+        const pathEl = doc.getElementById(pathTrack.pathId)
+        if (!pathEl) continue
+        for (const animateXml of buildSmilAnimatesForPath(pathTrack, durationMs)) {
+          const animateEl = new DOMParser()
+            .parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${animateXml}</svg>`, 'image/svg+xml')
+            .documentElement.firstElementChild
+          if (animateEl) pathEl.appendChild(doc.importNode(animateEl, true))
+        }
+      }
+      return new XMLSerializer().serializeToString(doc)
+    }
+
     const rasterize = (format: 'png' | 'jpg', scale: number, transparent: boolean): Promise<Blob> => {
       const { width: w, height: h, backgroundColor } = storeRef.current.canvas
       const svgUrl = URL.createObjectURL(
@@ -464,6 +485,8 @@ function PaperCanvas() {
         })
       } else if (kind.kind === 'downloadSvg') {
         downloadBlob(new Blob([buildStandaloneSvg()], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
+      } else if (kind.kind === 'downloadAnimatedSvg') {
+        downloadBlob(new Blob([buildAnimatedSvg()], { type: 'image/svg+xml' }), `${filenameBase}-animated.svg`)
       } else if (kind.kind === 'downloadRaster') {
         try {
           const blob = await rasterize(kind.format, kind.scale, kind.transparent)
