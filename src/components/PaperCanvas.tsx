@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
+import GIF from 'gif.js'
+import gifWorkerUrl from 'gif.js/dist/gif.worker.js?url'
 import { useEditorStore, type PropsEdit, type ExportKind } from '../store/editorStore'
 import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngine/hitTest'
@@ -135,29 +137,35 @@ function PaperCanvas() {
       }
     }
 
+    // Applies every animatable property (geometry + opacity + color) to `path` at `timeMs` —
+    // shared between live playback (the real path) and offscreen frame rendering for GIF/video
+    // export (a detached clone), so both can never drift into separate implementations.
+    const applyFullAnimationAtTime = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip, timeMs: number) => {
+      applyGeometryAtTime(path, pathTrack, clip, timeMs)
+
+      const opacityValue = evaluateProperty(clip, pathTrack.pathId, 'opacity', timeMs)
+      if (opacityValue !== null) path.opacity = opacityValue
+
+      // Each color trio (R/G/B) is always keyed together (see Timeline.tsx), so it's only
+      // applied once all three channels evaluate to a value this frame.
+      const evalColor = (prefix: 'fillColor' | 'strokeColor'): paper.Color | null => {
+        const r = evaluateProperty(clip, pathTrack.pathId, `${prefix}R` as AnimatableProperty, timeMs)
+        const g = evaluateProperty(clip, pathTrack.pathId, `${prefix}G` as AnimatableProperty, timeMs)
+        const b = evaluateProperty(clip, pathTrack.pathId, `${prefix}B` as AnimatableProperty, timeMs)
+        return r !== null && g !== null && b !== null ? new paper.Color(r / 255, g / 255, b / 255) : null
+      }
+      const fillColor = evalColor('fillColor')
+      if (fillColor) path.fillColor = fillColor
+      const strokeColor = evalColor('strokeColor')
+      if (strokeColor) path.strokeColor = strokeColor
+    }
+
     const applyAnimationAtTime = (timeMs: number) => {
       const clip = storeRef.current.animation
       for (const pathTrack of clip.tracks) {
         const path = findPathById(contentLayer, pathTrack.pathId)
         if (!path) continue
-
-        applyGeometryAtTime(path, pathTrack, clip, timeMs)
-
-        const opacityValue = evaluateProperty(clip, pathTrack.pathId, 'opacity', timeMs)
-        if (opacityValue !== null) path.opacity = opacityValue
-
-        // Each color trio (R/G/B) is always keyed together (see Timeline.tsx), so it's only
-        // applied once all three channels evaluate to a value this frame.
-        const evalColor = (prefix: 'fillColor' | 'strokeColor'): paper.Color | null => {
-          const r = evaluateProperty(clip, pathTrack.pathId, `${prefix}R` as AnimatableProperty, timeMs)
-          const g = evaluateProperty(clip, pathTrack.pathId, `${prefix}G` as AnimatableProperty, timeMs)
-          const b = evaluateProperty(clip, pathTrack.pathId, `${prefix}B` as AnimatableProperty, timeMs)
-          return r !== null && g !== null && b !== null ? new paper.Color(r / 255, g / 255, b / 255) : null
-        }
-        const fillColor = evalColor('fillColor')
-        if (fillColor) path.fillColor = fillColor
-        const strokeColor = evalColor('strokeColor')
-        if (strokeColor) path.strokeColor = strokeColor
+        applyFullAnimationAtTime(path, pathTrack, clip, timeMs)
       }
     }
 
@@ -483,11 +491,13 @@ function PaperCanvas() {
       return new XMLSerializer().serializeToString(doc)
     }
 
-    const rasterize = (format: 'png' | 'jpg', scale: number, transparent: boolean): Promise<Blob> => {
+    // Shared by raster (PNG/JPG) export and GIF/video frame rendering — loads an arbitrary SVG
+    // string as an <img> and draws it onto a fresh offscreen canvas at `scale`. `fillBackground`
+    // is forced on for GIF/video (no alpha channel support worth relying on there) but optional
+    // for a single-image export, where a transparent PNG is often exactly what's wanted.
+    const svgStringToCanvas = (svgString: string, scale: number, fillBackground: boolean): Promise<HTMLCanvasElement> => {
       const { width: w, height: h, backgroundColor } = storeRef.current.canvas
-      const svgUrl = URL.createObjectURL(
-        new Blob([buildStandaloneSvg()], { type: 'image/svg+xml' }),
-      )
+      const svgUrl = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }))
       return new Promise((resolve, reject) => {
         const img = new Image()
         img.onload = () => {
@@ -500,16 +510,12 @@ function PaperCanvas() {
             reject(new Error('2D context unavailable'))
             return
           }
-          if (!transparent || format === 'jpg') {
+          if (fillBackground) {
             ctx.fillStyle = backgroundColor
             ctx.fillRect(0, 0, offscreen.width, offscreen.height)
           }
           ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height)
-          offscreen.toBlob(
-            (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
-            format === 'jpg' ? 'image/jpeg' : 'image/png',
-            0.92,
-          )
+          resolve(offscreen)
         }
         img.onerror = () => {
           URL.revokeObjectURL(svgUrl)
@@ -517,6 +523,105 @@ function PaperCanvas() {
         }
         img.src = svgUrl
       })
+    }
+
+    const rasterize = async (format: 'png' | 'jpg', scale: number, transparent: boolean): Promise<Blob> => {
+      const canvasEl = await svgStringToCanvas(buildStandaloneSvg(), scale, !transparent || format === 'jpg')
+      return new Promise((resolve, reject) => {
+        canvasEl.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
+          format === 'jpg' ? 'image/jpeg' : 'image/png',
+          0.92,
+        )
+      })
+    }
+
+    // Renders one animation frame's full state (every property, not just the SMIL-exportable
+    // subset — see buildAnimatedSvg) onto a detached clone group, so GIF/video frame rendering
+    // never touches the live paths the user is editing.
+    const renderAnimationFrameSvg = (timeMs: number): string => {
+      const clip = storeRef.current.animation
+      const group = new paper.Group({ insert: false })
+      for (const child of contentLayer.children) {
+        if (!(child instanceof paper.Path)) continue
+        const clone = child.clone({ insert: false }) as paper.Path
+        const pathTrack = clip.tracks.find((t) => t.pathId === child.name)
+        if (pathTrack) applyFullAnimationAtTime(clone, pathTrack, clip, timeMs)
+        group.addChild(clone)
+      }
+      const raw = group.exportSVG({ asString: true }) as string
+      group.remove()
+      const { width: w, height: h } = storeRef.current.canvas
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${raw}</svg>`
+    }
+
+    const renderAnimationFrames = async (fps: number, scale: number): Promise<HTMLCanvasElement[]> => {
+      const durationMs = storeRef.current.animation.durationMs
+      const frameCount = Math.max(1, Math.round((durationMs / 1000) * fps))
+      const frames: HTMLCanvasElement[] = []
+      for (let i = 0; i < frameCount; i++) {
+        const t = frameCount === 1 ? 0 : (i / (frameCount - 1)) * durationMs
+        frames.push(await svgStringToCanvas(renderAnimationFrameSvg(t), scale, true))
+      }
+      return frames
+    }
+
+    const exportGif = async (fps: number, scale: number): Promise<Blob> => {
+      const frames = await renderAnimationFrames(fps, scale)
+      const { width: w, height: h } = storeRef.current.canvas
+      return new Promise((resolve, reject) => {
+        const gif = new GIF({
+          workers: 2,
+          quality: 10,
+          workerScript: gifWorkerUrl,
+          width: w * scale,
+          height: h * scale,
+        })
+        for (const frame of frames) gif.addFrame(frame, { delay: 1000 / fps })
+        gif.on('finished', (blob: Blob) => resolve(blob))
+        // gif.js's types don't declare the 'abort' event, but it does emit one.
+        ;(gif as unknown as { on: (event: string, cb: () => void) => void }).on('abort', () =>
+          reject(new Error('GIF export aborted')),
+        )
+        gif.render()
+      })
+    }
+
+    // Real-time canvas capture: draws each pre-rendered frame at a steady interval onto a
+    // canvas whose MediaStream a MediaRecorder is watching — recording necessarily takes about
+    // as long as the animation's own duration, same as watching it play once.
+    const exportVideo = async (fps: number, scale: number): Promise<Blob> => {
+      const frames = await renderAnimationFrames(fps, scale)
+      const { width: w, height: h } = storeRef.current.canvas
+      const outputCanvas = document.createElement('canvas')
+      outputCanvas.width = w * scale
+      outputCanvas.height = h * scale
+      const ctx = outputCanvas.getContext('2d')
+      if (!ctx) throw new Error('2D context unavailable')
+
+      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm'
+      const stream = outputCanvas.captureStream(fps)
+      const recorder = new MediaRecorder(stream, { mimeType })
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data)
+      }
+      const stopped = new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve()
+      })
+
+      recorder.start()
+      const frameDurationMs = 1000 / fps
+      for (const frame of frames) {
+        ctx.clearRect(0, 0, outputCanvas.width, outputCanvas.height)
+        ctx.drawImage(frame, 0, 0)
+        await new Promise((r) => setTimeout(r, frameDurationMs))
+      }
+      recorder.stop()
+      await stopped
+      return new Blob(chunks, { type: 'video/webm' })
     }
 
     const handleExport = async (kind: ExportKind) => {
@@ -536,6 +641,20 @@ function PaperCanvas() {
           downloadBlob(blob, `${filenameBase}.${kind.format}`)
         } catch {
           // Best-effort export — silently drop on rasterization failure.
+        }
+      } else if (kind.kind === 'downloadGif') {
+        try {
+          const blob = await exportGif(kind.fps, kind.scale)
+          downloadBlob(blob, `${filenameBase}.gif`)
+        } catch {
+          // Best-effort export — silently drop on encoding failure.
+        }
+      } else if (kind.kind === 'downloadVideo') {
+        try {
+          const blob = await exportVideo(kind.fps, kind.scale)
+          downloadBlob(blob, `${filenameBase}.webm`)
+        } catch {
+          // Best-effort export — silently drop on recording failure.
         }
       } else if (kind.kind === 'downloadProjectFile') {
         downloadBlob(

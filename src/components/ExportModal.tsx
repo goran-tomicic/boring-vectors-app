@@ -3,6 +3,7 @@ import { useEditorStore } from '../store/editorStore'
 import './ExportModal.css'
 
 const RASTER_SCALES = [1, 2, 4] as const
+const ANIMATION_FPS_OPTIONS = [12, 24, 30] as const
 
 function ExportModal() {
   const isOpen = useEditorStore((s) => s.exportModalOpen)
@@ -12,6 +13,8 @@ function ExportModal() {
 
   const [scale, setScale] = useState<(typeof RASTER_SCALES)[number]>(1)
   const [transparent, setTransparent] = useState(true)
+  const [animationScale, setAnimationScale] = useState<(typeof RASTER_SCALES)[number]>(1)
+  const [fps, setFps] = useState<(typeof ANIMATION_FPS_OPTIONS)[number]>(24)
 
   if (!isOpen) return null
 
@@ -38,13 +41,60 @@ function ExportModal() {
               <button
                 type="button"
                 onClick={() => runAndClose({ kind: 'downloadAnimatedSvg' })}
-                title="Bakes opacity/fill/stroke keyframes in as native SVG animation — position, size, rotation and scale aren't included yet"
+                title="Bakes all animatable properties in as native SVG animation — plays standalone, no app needed"
               >
                 Download animated .svg
               </button>
             )}
           </div>
         </div>
+
+        {animationEnabled && (
+          <div className="ExportModal-section">
+            <div className="ExportModal-sectionTitle">Animation (GIF / video)</div>
+            <div className="ExportModal-rasterOptions">
+              <label className="ExportModal-scaleLabel">
+                Scale
+                <select
+                  value={animationScale}
+                  onChange={(e) => setAnimationScale(Number(e.target.value) as typeof animationScale)}
+                >
+                  {RASTER_SCALES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}×
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="ExportModal-scaleLabel">
+                FPS
+                <select value={fps} onChange={(e) => setFps(Number(e.target.value) as typeof fps)}>
+                  {ANIMATION_FPS_OPTIONS.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="ExportModal-row">
+              <button
+                type="button"
+                onClick={() => runAndClose({ kind: 'downloadGif', fps, scale: animationScale })}
+                title="Renders every frame and encodes a GIF — may take a few seconds for longer/higher-fps clips"
+              >
+                Download .gif
+              </button>
+              <button
+                type="button"
+                onClick={() => runAndClose({ kind: 'downloadVideo', fps, scale: animationScale })}
+                title="Records in real time — takes about as long as the animation's own duration"
+              >
+                Download .webm
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="ExportModal-section">
           <div className="ExportModal-sectionTitle">Raster image</div>

@@ -48,9 +48,11 @@ export type PropsEdit =
 export type ExportKind =
   | { kind: 'copySvg' }
   | { kind: 'downloadSvg' }
-  /** SMIL animation baked in — opacity/fill/stroke only for now, see the note in animation.ts. */
+  /** All animatable properties baked in as native SMIL animation — see animation.ts. */
   | { kind: 'downloadAnimatedSvg' }
   | { kind: 'downloadRaster'; format: 'png' | 'jpg'; scale: number; transparent: boolean }
+  | { kind: 'downloadGif'; fps: number; scale: number }
+  | { kind: 'downloadVideo'; fps: number; scale: number }
   | { kind: 'downloadProjectFile' }
 
 interface CanvasState {
