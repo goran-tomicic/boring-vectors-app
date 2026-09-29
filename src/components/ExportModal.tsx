@@ -8,6 +8,7 @@ function ExportModal() {
   const isOpen = useEditorStore((s) => s.exportModalOpen)
   const closeExportModal = useEditorStore((s) => s.closeExportModal)
   const requestExport = useEditorStore((s) => s.requestExport)
+  const animationEnabled = useEditorStore((s) => s.settings.animationEnabled)
 
   const [scale, setScale] = useState<(typeof RASTER_SCALES)[number]>(1)
   const [transparent, setTransparent] = useState(true)
@@ -33,6 +34,15 @@ function ExportModal() {
             <button type="button" onClick={() => runAndClose({ kind: 'downloadSvg' })}>
               Download .svg
             </button>
+            {animationEnabled && (
+              <button
+                type="button"
+                onClick={() => runAndClose({ kind: 'downloadAnimatedSvg' })}
+                title="Bakes opacity/fill/stroke keyframes in as native SVG animation — position, size, rotation and scale aren't included yet"
+              >
+                Download animated .svg
+              </button>
+            )}
           </div>
         </div>
 
