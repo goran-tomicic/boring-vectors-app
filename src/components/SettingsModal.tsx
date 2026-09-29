@@ -11,6 +11,8 @@ function SettingsModal() {
   const setTheme = useEditorStore((s) => s.setTheme)
   const animationEnabled = useEditorStore((s) => s.settings.animationEnabled)
   const setAnimationEnabled = useEditorStore((s) => s.setAnimationEnabled)
+  const loopPlayback = useEditorStore((s) => s.settings.loopPlayback)
+  const setLoopPlayback = useEditorStore((s) => s.setLoopPlayback)
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
@@ -82,6 +84,17 @@ function SettingsModal() {
           />
           Animation timeline (beta — early, expect rough edges)
         </label>
+
+        {animationEnabled && (
+          <label className="SettingsModal-row">
+            <input
+              type="checkbox"
+              checked={loopPlayback}
+              onChange={(e) => setLoopPlayback(e.target.checked)}
+            />
+            Loop timeline playback
+          </label>
+        )}
 
         <div className="SettingsModal-actions">
           <button type="button" className="SettingsModal-close" onClick={closeSettingsModal}>
