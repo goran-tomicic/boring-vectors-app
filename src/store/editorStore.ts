@@ -69,6 +69,8 @@ interface SettingsState {
   theme: Theme
   /** Feature flag for the animation timeline (docs/ROADMAP.md step 3) — off by default while it's still a vertical slice. */
   animationEnabled: boolean
+  /** Whether Timeline playback restarts from 0 on reaching the end instead of stopping. */
+  loopPlayback: boolean
 }
 
 /** Live view transform, pushed by PaperCanvas on every pan/zoom/resize so the Rulers component can track it without touching Paper.js. */
@@ -127,6 +129,7 @@ export interface EditorState {
   setScrollZoomOnly: (value: boolean) => void
   setTheme: (theme: Theme) => void
   setAnimationEnabled: (value: boolean) => void
+  setLoopPlayback: (value: boolean) => void
   /** Read-only; written by PaperCanvas only. */
   viewTransform: ViewTransform
   setViewTransform: (transform: ViewTransform) => void
@@ -197,7 +200,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedPathIds: [],
   selectedSegmentIndex: null,
   canvas: { width: 800, height: 600, gridVisible: true, zoom: 1, backgroundColor: '#1f2028', backgroundOpacity: 1 },
-  settings: { scrollZoomOnly: false, theme: 'dark', animationEnabled: false },
+  settings: { scrollZoomOnly: false, theme: 'dark', animationEnabled: false, loopPlayback: false },
   status: 'Ready',
   setTool: (tool) => set({ tool }),
   setCanvasSize: (width, height) =>
@@ -255,6 +258,8 @@ export const useEditorStore = create<EditorState>((set) => ({
       // on a hidden Timeline with no way back to the drawing toolbar.
       appMode: value ? state.appMode : 'draw',
     })),
+  setLoopPlayback: (value) =>
+    set((state) => ({ settings: { ...state.settings, loopPlayback: value } })),
   viewTransform: { zoom: 1, centerX: 0, centerY: 0, viewWidth: 0, viewHeight: 0 },
   setViewTransform: (transform) => set({ viewTransform: transform }),
   currentProjectId: '',

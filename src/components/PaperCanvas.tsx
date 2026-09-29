@@ -183,6 +183,16 @@ function PaperCanvas() {
       const duration = storeRef.current.animation.durationMs
       const next = playStartPlayheadMs + elapsed
       if (next >= duration) {
+        if (storeRef.current.settings.loopPlayback) {
+          // Carries over the overshoot past duration so the wrap is seamless — no stutter or
+          // pause at the loop seam.
+          const overshoot = duration > 0 ? next % duration : 0
+          playStartPlayheadMs = 0
+          playStartWallMs = performance.now() - overshoot
+          storeRef.current.setPlayhead(overshoot)
+          playRafId = requestAnimationFrame(tickPlayback)
+          return
+        }
         storeRef.current.setPlayhead(duration)
         storeRef.current.pause()
         return
