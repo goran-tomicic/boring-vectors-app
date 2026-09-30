@@ -2,6 +2,7 @@ import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
 import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
 import { type OverlayHit, hitTestOverlay } from './overlay'
+import { syncKeyframesAfterDirectEdit } from './animationPlayback'
 
 export const ACCENT = '#aa3bff'
 export const MARQUEE_FILL = 'rgba(170, 59, 255, 0.12)'
@@ -81,6 +82,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   }
   tool.onMouseUp = (event: paper.ToolEvent) => {
     if (dragPaths.length > 0) {
+      for (const path of dragPaths) syncKeyframesAfterDirectEdit(path, storeRef)
       dragPaths = []
       commitHistory()
       return

@@ -16,7 +16,11 @@ import {
   createPenTool,
   MIN_SEGMENTS,
 } from '../canvasEngine/tools'
-import { applyAnimationAtTime, createPlaybackController } from '../canvasEngine/animationPlayback'
+import {
+  applyAnimationAtTime,
+  createPlaybackController,
+  syncKeyframesAfterDirectEdit,
+} from '../canvasEngine/animationPlayback'
 import { createSvgExporter, downloadBlob } from '../canvasEngine/svgExport'
 import {
   type ProjectPayload,
@@ -423,6 +427,7 @@ function PaperCanvas() {
         }
       }
 
+      syncKeyframesAfterDirectEdit(path, storeRef)
       redrawOverlay()
       commitHistory()
     }

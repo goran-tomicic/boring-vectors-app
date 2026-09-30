@@ -142,3 +142,31 @@ export function createPlaybackController(storeRef: { current: EditorState }): Pl
 
   return { start, stop }
 }
+
+/**
+ * After a direct edit to `path` (drag, Properties panel position/color edit) while in Animate
+ * mode, updates any keyframes that already exist at exactly the current playhead time to match
+ * — so adjusting a pose you're already parked on updates it, instead of silently drifting from
+ * it on the next scrub. Deliberately does not create new keyframes; see the "no auto-keying"
+ * note in docs/ROADMAP.md for why that's a separate, undecided design question.
+ */
+export function syncKeyframesAfterDirectEdit(path: paper.Path, storeRef: { current: EditorState }) {
+  if (storeRef.current.appMode !== 'animate') return
+  const pathId = path.name
+  if (!pathId) return
+  const t = storeRef.current.playheadMs
+  const update = storeRef.current.updateKeyframeValueIfExists
+
+  update(pathId, 'x', t, path.bounds.x)
+  update(pathId, 'y', t, path.bounds.y)
+  if (path.fillColor) {
+    update(pathId, 'fillColorR', t, Math.round(path.fillColor.red * 255))
+    update(pathId, 'fillColorG', t, Math.round(path.fillColor.green * 255))
+    update(pathId, 'fillColorB', t, Math.round(path.fillColor.blue * 255))
+  }
+  if (path.strokeColor) {
+    update(pathId, 'strokeColorR', t, Math.round(path.strokeColor.red * 255))
+    update(pathId, 'strokeColorG', t, Math.round(path.strokeColor.green * 255))
+    update(pathId, 'strokeColorB', t, Math.round(path.strokeColor.blue * 255))
+  }
+}

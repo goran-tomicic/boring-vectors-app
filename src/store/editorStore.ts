@@ -9,6 +9,7 @@ import {
   withKeyframeSet,
   withKeyframeRemoved,
   withKeyframeMoved,
+  withKeyframeValueUpdated,
   withRestGeometrySet,
 } from '../animation'
 
@@ -167,6 +168,8 @@ export interface EditorState {
   setKeyframe: (pathId: string, property: AnimatableProperty, time: number, value: number, easing?: Easing) => void
   removeKeyframe: (pathId: string, property: AnimatableProperty, time: number) => void
   moveKeyframe: (pathId: string, property: AnimatableProperty, oldTime: number, newTime: number) => void
+  /** Updates the value of an existing keyframe at exactly `time` — a no-op if none exists there. Used so direct manipulation (dragging, Properties panel edits) in Animate mode updates a keyframe you're already parked on, rather than silently drifting from it — see docs/ROADMAP.md's "no auto-keying" note for why this never creates a new keyframe. */
+  updateKeyframeValueIfExists: (pathId: string, property: AnimatableProperty, time: number, value: number) => void
   /** Written by PaperCanvas only, in response to transformKeyframeRequest — captures a path's rest geometry once, the first time rotation/scale is keyframed for it. No-op if already captured. */
   setRestGeometry: (pathId: string, segments: SegmentSnapshot[], center: { x: number; y: number }) => void
   /**
@@ -302,6 +305,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     set((state) => ({ animation: withKeyframeRemoved(state.animation, pathId, property, time) })),
   moveKeyframe: (pathId, property, oldTime, newTime) =>
     set((state) => ({ animation: withKeyframeMoved(state.animation, pathId, property, oldTime, newTime) })),
+  updateKeyframeValueIfExists: (pathId, property, time, value) =>
+    set((state) => ({ animation: withKeyframeValueUpdated(state.animation, pathId, property, time, value) })),
   setRestGeometry: (pathId, segments, center) =>
     set((state) => ({ animation: withRestGeometrySet(state.animation, pathId, segments, center) })),
   transformKeyframeRequest: null,
