@@ -39,12 +39,12 @@ Follow `docs/SPEC.md` § Build Plan in order — don't jump ahead to later-step 
 
 ## Post-v1 roadmap
 
-Work beyond the original 7-step build plan (multiple projects, export, animation) is tracked in `docs/ROADMAP.md`, not here — read it before touching projects/export/animation code. It also documents a pending amendment to the "Key architectural rule" above: animation keyframe data needs a new store slice as a second, explicit source of truth (timeline data, not live geometry), separate from Paper.js's `Project`. Apply that amendment when the animation step (step 3 of the roadmap) begins.
+Work beyond the original 7-step build plan (multiple projects, export, animation, animated export) is tracked in `docs/ROADMAP.md`, not here — read it before touching projects/export/animation code. It's a reference for current state and the decisions behind it (including the architectural amendment above), not a chronological log.
 
 ## Status
 
 All 7 build-order steps are done, including step 7's new-project scope (undo/redo, multi-select, named documents, ruler tool, numeric handle inputs, maker tools — pen + rectangle/ellipse). One deviation from the order above: Import was pulled forward to run right after Tools parity (step 3) instead of after Properties panel, since Properties panel needed real paths on canvas to test by hand — see the plan file for the reasoning. `docs/SPEC.md`'s Build Plan numbering doesn't reflect this reorder; treat this Status section as authoritative over that list for what's actually done.
 
-Post-v1 work (multiple projects, export, animation) is now underway per `docs/ROADMAP.md` — see that file's own Status section for progress.
+Post-v1 work (multiple projects, export, animation, animated export) is done per `docs/ROADMAP.md` — see that file for current state and known gaps.
 
 Automated test scaffolding (Vitest/Playwright) has not been set up — deferred by user request. All verification so far has been manual (dev server + one-off headless-browser scripts per change, not checked into the repo).
