@@ -157,6 +157,14 @@ function Timeline() {
     } else {
       setKeyframe(selectedPathId, def.property, playheadMs, value, easing)
     }
+    // The override's job was to preview a target value before committing it — once keyed,
+    // the field should go back to tracking the live/true value as the playhead moves,
+    // instead of staying pinned to whatever was last typed regardless of scrubbing.
+    setValueOverrides((prev) => {
+      const next = { ...prev }
+      delete next[def.property]
+      return next
+    })
   }
 
   const liveColorHex = (def: ColorRowDef) =>
@@ -169,6 +177,13 @@ function Timeline() {
     setKeyframe(selectedPathId, pr, playheadMs, r, easing)
     setKeyframe(selectedPathId, pg, playheadMs, g, easing)
     setKeyframe(selectedPathId, pb, playheadMs, b, easing)
+    // Same reasoning as handleAddKeyframe — stop pinning the swatch to the typed preview
+    // color once it's committed, so it goes back to tracking the live value while scrubbing.
+    setColorOverrides((prev) => {
+      const next = { ...prev }
+      delete next[def.prefix]
+      return next
+    })
   }
 
   const colorAtTime = (def: ColorRowDef, time: number): string => {
