@@ -34,7 +34,17 @@ Animation/export logic is split the same way `tools.ts`/`hitTest.ts`/`overlay.ts
 
 ## Known gaps / not done
 
+- **No auto-keying.** Direct manipulation while in Animate mode (dragging a shape, node-editing, changing stroke/fill via the Properties panel) mutates the live path exactly like Draw mode does, with no connection to the keyframe system — it doesn't create or update a keyframe at the playhead. If a property already has keyframes, the very next scrub silently overwrites the direct edit with whatever the keyframes evaluate to, with no warning. This is the biggest authoring-workflow gap right now; every real keyframe tool (After Effects, Figma, CSS tooling) has some version of "direct manipulation at a keyed frame writes a keyframe." Needs a design decision (auto-create vs. require an explicit action) before building.
 - Easing can't be edited on an existing keyframe after the fact (delete + re-add only).
 - Rest-geometry pruning (see the rotation/scale note above).
 - GIF/video export always renders exactly one pass regardless of the "Loop timeline playback" setting — a looping GIF is a separate, unrequested feature.
 - No automated test coverage (Vitest/Playwright) — deferred project-wide per `CLAUDE.md`; all verification this far has been manual smoke scripts per change, not checked into the repo.
+
+## Fixed: Timeline fields/overlay went stale while scrubbing
+
+Two compounding bugs, both found from a user report ("moving to a timeframe doesn't show updates to transformed objects") and confirmed by reproduction before fixing:
+
+1. The playhead-change handler in `PaperCanvas.tsx` called `applyAnimationAtTime` (which correctly moves/rotates/recolors the live path) but never refreshed the selection overlay or `selectedPathProps` — the data Timeline's property rows and the Properties panel read from. The canvas was right; the panels were stale, only updating on selection changes. Fixed by splitting `redrawOverlay` into `refreshSelectionDisplay` (overlay redraw + `selectedPathProps` refresh, no side effects) and the autosave-scheduling wrapper around it, and calling the former on every playhead change too — without triggering autosave on every animation frame during playback.
+2. Separately, `Timeline.tsx`'s per-property `valueOverrides`/`colorOverrides` (used to preview a value before clicking "Key") never got cleared after the keyframe was actually set, so a field stayed pinned to whatever was last typed regardless of scrubbing, masking even the corrected live value from fix (1). Fixed by clearing the relevant override once its keyframe is committed.
+
+Verified precisely: keyed X at 355 (t=0) and 555 (t≈end), confirmed the field showed ~455 at the midpoint scrub and progressed smoothly (405→573) across five samples during actual playback — not just manual scrub clicks.

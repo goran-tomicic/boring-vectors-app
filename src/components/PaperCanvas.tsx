@@ -165,9 +165,13 @@ function PaperCanvas() {
       restoreSnapshot(next)
     }
 
-    const redrawOverlay = () => {
+    // Redraws the selection overlay (selection box / node handles) and refreshes
+    // selectedPathProps (what Timeline.tsx's property rows and the Properties panel read
+    // live values from) to match the path's current state. No side effects beyond that —
+    // split out from redrawOverlay so a playhead-driven refresh (every animation frame
+    // during scrubbing/playback) doesn't also reschedule autosave on every tick.
+    const refreshSelectionDisplay = () => {
       const { selectedPathIds, selectedSegmentIndex, tool } = storeRef.current
-      scheduleAutosave()
       clearOverlay(overlayLayer)
       const zoom = scope.view.zoom
 
@@ -188,6 +192,11 @@ function PaperCanvas() {
       for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
         drawSelectionHighlight(overlayLayer, path, zoom)
       }
+    }
+
+    const redrawOverlay = () => {
+      scheduleAutosave()
+      refreshSelectionDisplay()
     }
 
     const flushAutosaveNow = () => {
@@ -610,6 +619,9 @@ function PaperCanvas() {
       if (state.playheadMs !== prevState.playheadMs || state.animation !== prevState.animation) {
         scope.activate()
         applyAnimationAtTime(contentLayer, state.animation, state.playheadMs)
+        // Without this, the canvas animates correctly but the selection box and Timeline's
+        // own property fields go stale — they only otherwise refresh on selection changes.
+        refreshSelectionDisplay()
       }
       // Keyframe/duration edits don't touch Paper.js geometry, so redrawOverlay() (the usual
       // autosave trigger) never runs for them — schedule a save directly instead.
