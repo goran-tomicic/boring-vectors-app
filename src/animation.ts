@@ -240,6 +240,26 @@ export function withKeyframeMoved(
   )
 }
 
+/**
+ * Returns a new clip with the value of the keyframe nearest `time` (within epsilon) updated —
+ * its time and easing are left unchanged. A no-op if no such keyframe exists (this is
+ * deliberately conservative: it updates an existing keyframe at the exact current time, it
+ * never creates a new one — see docs/ROADMAP.md's "no auto-keying" gap for why that's a
+ * separate, undecided piece of design rather than something this silently does too).
+ */
+export function withKeyframeValueUpdated(
+  clip: AnimationClip,
+  pathId: string,
+  property: AnimatableProperty,
+  time: number,
+  value: number,
+): AnimationClip {
+  const track = findPropertyTrack(clip, pathId, property)
+  const keyframe = track?.keyframes.find((k) => Math.abs(k.time - time) <= KEYFRAME_MERGE_EPSILON_MS)
+  if (!track || !keyframe) return clip
+  return withKeyframeSet(clip, pathId, property, keyframe.time, value, keyframe.easing)
+}
+
 // --- SMIL export (docs/ROADMAP.md step 4) ---
 // Scoped to opacity/fill/stroke color for this round: they map 1:1 onto a native SVG
 // <animate attributeName="..."> with no ambiguity. Position/size/rotation/scale don't have
