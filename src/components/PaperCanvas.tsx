@@ -1,7 +1,5 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
-import GIF from 'gif.js'
-import gifWorkerUrl from 'gif.js/dist/gif.worker.js?url'
 import { useEditorStore, type PropsEdit, type ExportKind } from '../store/editorStore'
 import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngine/hitTest'
@@ -18,6 +16,8 @@ import {
   createPenTool,
   MIN_SEGMENTS,
 } from '../canvasEngine/tools'
+import { applyAnimationAtTime, createPlaybackController } from '../canvasEngine/animationPlayback'
+import { createSvgExporter, downloadBlob } from '../canvasEngine/svgExport'
 import {
   type ProjectPayload,
   ensureCurrentProject,
@@ -32,13 +32,9 @@ import {
 } from '../projects'
 import {
   createEmptyAnimationClip,
-  evaluateProperty,
   hasRestGeometry,
-  buildSmilAnimatesForPath,
   type AnimatableProperty,
-  type AnimationClip,
   type Easing,
-  type PathTrack,
   type SegmentSnapshot,
 } from '../animation'
 
@@ -76,138 +72,10 @@ function PaperCanvas() {
     const contentLayer = new scope.Layer({ name: 'content' })
     const overlayLayer = new scope.Layer({ name: 'overlay' })
 
-    // --- Animation playback ---
-    // Writes interpolated keyframe values onto live Paper.js paths each frame;
-    // never reads them back as truth (see CLAUDE.md's architectural amendment).
-    // Mutates `path`'s position/size/rotation/scale to match `pathTrack` at `timeMs` — shared
-    // between live playback (applied to the real path) and animated-SVG export (applied to an
-    // offscreen clone, sampled at many time points to build a dense <animate attributeName="d">
-    // — see buildGeometryAnimateForPath). Doesn't touch opacity/color; those are separate
-    // attribute animations, not geometry.
-    const applyGeometryAtTime = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip, timeMs: number) => {
-      // Rotation/scale reset to a stored rest shape and reapply each frame, rather than
-      // transforming incrementally — Paper.js has no separate matrix to reset, so repeated
-      // relative scale()/rotate() calls would drift and compound. This must run before the
-      // x/y/width/height loop below so those apply on top of the transformed shape, not the
-      // rest shape.
-      if (pathTrack.restSegments && pathTrack.restCenter) {
-        const segments = pathTrack.restSegments.map(
-          (s: SegmentSnapshot) =>
-            new paper.Segment(
-              new paper.Point(s.point.x, s.point.y),
-              new paper.Point(s.handleIn.x, s.handleIn.y),
-              new paper.Point(s.handleOut.x, s.handleOut.y),
-            ),
-        )
-        path.removeSegments()
-        path.addSegments(segments)
-        const center = new paper.Point(pathTrack.restCenter.x, pathTrack.restCenter.y)
-        const scale = evaluateProperty(clip, pathTrack.pathId, 'scale', timeMs) ?? 1
-        const rotation = evaluateProperty(clip, pathTrack.pathId, 'rotation', timeMs) ?? 0
-        if (scale !== 1) path.scale(scale, center)
-        if (rotation !== 0) path.rotate(rotation, center)
-      }
-
-      for (const propertyTrack of pathTrack.properties) {
-        if (
-          propertyTrack.property !== 'x' &&
-          propertyTrack.property !== 'y' &&
-          propertyTrack.property !== 'width' &&
-          propertyTrack.property !== 'height'
-        ) {
-          continue
-        }
-        const value = evaluateProperty(clip, pathTrack.pathId, propertyTrack.property, timeMs)
-        if (value === null) continue
-        if (propertyTrack.property === 'x') {
-          path.bounds = new paper.Rectangle(new paper.Point(value, path.bounds.y), path.bounds.size)
-        } else if (propertyTrack.property === 'y') {
-          path.bounds = new paper.Rectangle(new paper.Point(path.bounds.x, value), path.bounds.size)
-        } else if (propertyTrack.property === 'width') {
-          path.bounds = new paper.Rectangle(
-            path.bounds.point,
-            new paper.Size(Math.max(1, value), path.bounds.height),
-          )
-        } else if (propertyTrack.property === 'height') {
-          path.bounds = new paper.Rectangle(
-            path.bounds.point,
-            new paper.Size(path.bounds.width, Math.max(1, value)),
-          )
-        }
-      }
-    }
-
-    // Applies every animatable property (geometry + opacity + color) to `path` at `timeMs` —
-    // shared between live playback (the real path) and offscreen frame rendering for GIF/video
-    // export (a detached clone), so both can never drift into separate implementations.
-    const applyFullAnimationAtTime = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip, timeMs: number) => {
-      applyGeometryAtTime(path, pathTrack, clip, timeMs)
-
-      const opacityValue = evaluateProperty(clip, pathTrack.pathId, 'opacity', timeMs)
-      if (opacityValue !== null) path.opacity = opacityValue
-
-      // Each color trio (R/G/B) is always keyed together (see Timeline.tsx), so it's only
-      // applied once all three channels evaluate to a value this frame.
-      const evalColor = (prefix: 'fillColor' | 'strokeColor'): paper.Color | null => {
-        const r = evaluateProperty(clip, pathTrack.pathId, `${prefix}R` as AnimatableProperty, timeMs)
-        const g = evaluateProperty(clip, pathTrack.pathId, `${prefix}G` as AnimatableProperty, timeMs)
-        const b = evaluateProperty(clip, pathTrack.pathId, `${prefix}B` as AnimatableProperty, timeMs)
-        return r !== null && g !== null && b !== null ? new paper.Color(r / 255, g / 255, b / 255) : null
-      }
-      const fillColor = evalColor('fillColor')
-      if (fillColor) path.fillColor = fillColor
-      const strokeColor = evalColor('strokeColor')
-      if (strokeColor) path.strokeColor = strokeColor
-    }
-
-    const applyAnimationAtTime = (timeMs: number) => {
-      const clip = storeRef.current.animation
-      for (const pathTrack of clip.tracks) {
-        const path = findPathById(contentLayer, pathTrack.pathId)
-        if (!path) continue
-        applyFullAnimationAtTime(path, pathTrack, clip, timeMs)
-      }
-    }
-
-    let playRafId: number | null = null
-    let playStartWallMs = 0
-    let playStartPlayheadMs = 0
-
-    const stopPlaybackLoop = () => {
-      if (playRafId !== null) cancelAnimationFrame(playRafId)
-      playRafId = null
-    }
-
-    const tickPlayback = () => {
-      const elapsed = performance.now() - playStartWallMs
-      const duration = storeRef.current.animation.durationMs
-      const next = playStartPlayheadMs + elapsed
-      if (next >= duration) {
-        if (storeRef.current.settings.loopPlayback) {
-          // Carries over the overshoot past duration so the wrap is seamless — no stutter or
-          // pause at the loop seam.
-          const overshoot = duration > 0 ? next % duration : 0
-          playStartPlayheadMs = 0
-          playStartWallMs = performance.now() - overshoot
-          storeRef.current.setPlayhead(overshoot)
-          playRafId = requestAnimationFrame(tickPlayback)
-          return
-        }
-        storeRef.current.setPlayhead(duration)
-        storeRef.current.pause()
-        return
-      }
-      storeRef.current.setPlayhead(next)
-      playRafId = requestAnimationFrame(tickPlayback)
-    }
-
-    const startPlaybackLoop = () => {
-      playStartPlayheadMs =
-        storeRef.current.playheadMs >= storeRef.current.animation.durationMs ? 0 : storeRef.current.playheadMs
-      storeRef.current.setPlayhead(playStartPlayheadMs)
-      playStartWallMs = performance.now()
-      playRafId = requestAnimationFrame(tickPlayback)
-    }
+    // Animation playback + export logic lives in canvasEngine/animationPlayback.ts and
+    // svgExport.ts (same pattern as tools.ts/hitTest.ts) — only wired together here.
+    const playback = createPlaybackController(storeRef)
+    const exporter = createSvgExporter(contentLayer, storeRef)
 
     let currentProjectId: string
     let currentProjectName: string
@@ -234,7 +102,7 @@ function PaperCanvas() {
     storeRef.current.setCurrentProject(currentProjectId, currentProjectName)
     storeRef.current.setAnimationClip(initialDoc.payload.animation ?? createEmptyAnimationClip())
     storeRef.current.setPlayhead(0)
-    applyAnimationAtTime(0)
+    applyAnimationAtTime(contentLayer, storeRef.current.animation, 0)
 
     const buildCurrentPayload = (): ProjectPayload => ({
       svg: contentLayer.exportSVG({ asString: true }) as string,
@@ -350,7 +218,7 @@ function PaperCanvas() {
       storeRef.current.pause()
       storeRef.current.setAnimationClip(payload.animation ?? createEmptyAnimationClip())
       storeRef.current.setPlayhead(0)
-      applyAnimationAtTime(0)
+      applyAnimationAtTime(contentLayer, storeRef.current.animation, 0)
       storeRef.current.clearSelection()
       history.length = 0
       future.length = 0
@@ -430,238 +298,37 @@ function PaperCanvas() {
       commitHistory()
     }
 
-    const downloadBlob = (blob: Blob, filename: string) => {
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      a.click()
-      URL.revokeObjectURL(url)
-    }
-
-    // contentLayer.exportSVG returns a bare <g> fragment (not a standalone <svg>
-    // document), so wrap it in an <svg> root sized to the artboard rather than
-    // Paper's tight bounding box of the paths — export always captures the full
-    // canvas area the user set up, not just where paths happen to be.
-    const buildStandaloneSvg = () => {
-      const raw = contentLayer.exportSVG({ asString: true }) as string
-      const { width: w, height: h } = storeRef.current.canvas
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${raw}</svg>`
-    }
-
-    // Bakes SMIL <animate> elements (opacity/fill/stroke — see the note in animation.ts on
-    // why position/size/rotation/scale aren't included yet) into a copy of the static export,
-    // keyed by matching each <path>'s id attribute back to its pathId (Paper.js round-trips
-    // path.name through the SVG id attribute — see hitTest.ts).
-    // Position/size/rotation/scale don't map onto a single SVG attribute the way opacity/color
-    // do (see the note in animation.ts on buildSmilAnimatesForPath), so instead of asking the
-    // SVG renderer to interpolate between authored keyframes, this densely samples the path's
-    // geometry — reusing applyGeometryAtTime, the exact same code live playback uses — on an
-    // offscreen clone, and bakes the result into a single <animate attributeName="d">. Easing
-    // is already "baked in" by sampling at a fixed rate, so playback between samples is linear.
-    const GEOMETRY_EXPORT_FPS = 24
-    const buildGeometryAnimateForPath = (path: paper.Path, pathTrack: PathTrack, clip: AnimationClip): string | null => {
-      const hasGeometryTrack = pathTrack.properties.some((p) =>
-        (['x', 'y', 'width', 'height', 'rotation', 'scale'] as AnimatableProperty[]).includes(p.property),
-      )
-      if (!hasGeometryTrack) return null
-
-      const frameCount = Math.max(2, Math.round((clip.durationMs / 1000) * GEOMETRY_EXPORT_FPS))
-      const clone = path.clone({ insert: false }) as paper.Path
-      const dValues: string[] = []
-      for (let i = 0; i <= frameCount; i++) {
-        applyGeometryAtTime(clone, pathTrack, clip, (i / frameCount) * clip.durationMs)
-        dValues.push(clone.pathData)
-      }
-
-      if (dValues.every((d) => d === dValues[0])) return null // no real motion — skip
-
-      const keyTimes = dValues.map((_, i) => (i / frameCount).toFixed(4)).join(';')
-      return `<animate attributeName="d" values="${dValues.join(';')}" keyTimes="${keyTimes}" dur="${clip.durationMs}ms" begin="0s" calcMode="linear" fill="freeze"/>`
-    }
-
-    const buildAnimatedSvg = () => {
-      const doc = new DOMParser().parseFromString(buildStandaloneSvg(), 'image/svg+xml')
-      const clip = storeRef.current.animation
-      for (const pathTrack of clip.tracks) {
-        const pathEl = doc.getElementById(pathTrack.pathId)
-        const path = findPathById(contentLayer, pathTrack.pathId)
-        if (!pathEl || !path) continue
-        const animateXmls = [
-          ...buildSmilAnimatesForPath(pathTrack, clip.durationMs),
-          buildGeometryAnimateForPath(path, pathTrack, clip),
-        ].filter((xml): xml is string => xml !== null)
-        for (const animateXml of animateXmls) {
-          const animateEl = new DOMParser()
-            .parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${animateXml}</svg>`, 'image/svg+xml')
-            .documentElement.firstElementChild
-          if (animateEl) pathEl.appendChild(doc.importNode(animateEl, true))
-        }
-      }
-      return new XMLSerializer().serializeToString(doc)
-    }
-
-    // Shared by raster (PNG/JPG) export and GIF/video frame rendering — loads an arbitrary SVG
-    // string as an <img> and draws it onto a fresh offscreen canvas at `scale`. `fillBackground`
-    // is forced on for GIF/video (no alpha channel support worth relying on there) but optional
-    // for a single-image export, where a transparent PNG is often exactly what's wanted.
-    const svgStringToCanvas = (svgString: string, scale: number, fillBackground: boolean): Promise<HTMLCanvasElement> => {
-      const { width: w, height: h, backgroundColor } = storeRef.current.canvas
-      const svgUrl = URL.createObjectURL(new Blob([svgString], { type: 'image/svg+xml' }))
-      return new Promise((resolve, reject) => {
-        const img = new Image()
-        img.onload = () => {
-          const offscreen = document.createElement('canvas')
-          offscreen.width = w * scale
-          offscreen.height = h * scale
-          const ctx = offscreen.getContext('2d')
-          URL.revokeObjectURL(svgUrl)
-          if (!ctx) {
-            reject(new Error('2D context unavailable'))
-            return
-          }
-          if (fillBackground) {
-            ctx.fillStyle = backgroundColor
-            ctx.fillRect(0, 0, offscreen.width, offscreen.height)
-          }
-          ctx.drawImage(img, 0, 0, offscreen.width, offscreen.height)
-          resolve(offscreen)
-        }
-        img.onerror = () => {
-          URL.revokeObjectURL(svgUrl)
-          reject(new Error('SVG image failed to load'))
-        }
-        img.src = svgUrl
-      })
-    }
-
-    const rasterize = async (format: 'png' | 'jpg', scale: number, transparent: boolean): Promise<Blob> => {
-      const canvasEl = await svgStringToCanvas(buildStandaloneSvg(), scale, !transparent || format === 'jpg')
-      return new Promise((resolve, reject) => {
-        canvasEl.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error('toBlob failed'))),
-          format === 'jpg' ? 'image/jpeg' : 'image/png',
-          0.92,
-        )
-      })
-    }
-
-    // Renders one animation frame's full state (every property, not just the SMIL-exportable
-    // subset — see buildAnimatedSvg) onto a detached clone group, so GIF/video frame rendering
-    // never touches the live paths the user is editing.
-    const renderAnimationFrameSvg = (timeMs: number): string => {
-      const clip = storeRef.current.animation
-      const group = new paper.Group({ insert: false })
-      for (const child of contentLayer.children) {
-        if (!(child instanceof paper.Path)) continue
-        const clone = child.clone({ insert: false }) as paper.Path
-        const pathTrack = clip.tracks.find((t) => t.pathId === child.name)
-        if (pathTrack) applyFullAnimationAtTime(clone, pathTrack, clip, timeMs)
-        group.addChild(clone)
-      }
-      const raw = group.exportSVG({ asString: true }) as string
-      group.remove()
-      const { width: w, height: h } = storeRef.current.canvas
-      return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${raw}</svg>`
-    }
-
-    const renderAnimationFrames = async (fps: number, scale: number): Promise<HTMLCanvasElement[]> => {
-      const durationMs = storeRef.current.animation.durationMs
-      const frameCount = Math.max(1, Math.round((durationMs / 1000) * fps))
-      const frames: HTMLCanvasElement[] = []
-      for (let i = 0; i < frameCount; i++) {
-        const t = frameCount === 1 ? 0 : (i / (frameCount - 1)) * durationMs
-        frames.push(await svgStringToCanvas(renderAnimationFrameSvg(t), scale, true))
-      }
-      return frames
-    }
-
-    const exportGif = async (fps: number, scale: number): Promise<Blob> => {
-      const frames = await renderAnimationFrames(fps, scale)
-      const { width: w, height: h } = storeRef.current.canvas
-      return new Promise((resolve, reject) => {
-        const gif = new GIF({
-          workers: 2,
-          quality: 10,
-          workerScript: gifWorkerUrl,
-          width: w * scale,
-          height: h * scale,
-        })
-        for (const frame of frames) gif.addFrame(frame, { delay: 1000 / fps })
-        gif.on('finished', (blob: Blob) => resolve(blob))
-        // gif.js's types don't declare the 'abort' event, but it does emit one.
-        ;(gif as unknown as { on: (event: string, cb: () => void) => void }).on('abort', () =>
-          reject(new Error('GIF export aborted')),
-        )
-        gif.render()
-      })
-    }
-
-    // Real-time canvas capture: draws each pre-rendered frame at a steady interval onto a
-    // canvas whose MediaStream a MediaRecorder is watching — recording necessarily takes about
-    // as long as the animation's own duration, same as watching it play once.
-    const exportVideo = async (fps: number, scale: number): Promise<Blob> => {
-      const frames = await renderAnimationFrames(fps, scale)
-      const { width: w, height: h } = storeRef.current.canvas
-      const outputCanvas = document.createElement('canvas')
-      outputCanvas.width = w * scale
-      outputCanvas.height = h * scale
-      const ctx = outputCanvas.getContext('2d')
-      if (!ctx) throw new Error('2D context unavailable')
-
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-        ? 'video/webm;codecs=vp9'
-        : 'video/webm'
-      const stream = outputCanvas.captureStream(fps)
-      const recorder = new MediaRecorder(stream, { mimeType })
-      const chunks: Blob[] = []
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data)
-      }
-      const stopped = new Promise<void>((resolve) => {
-        recorder.onstop = () => resolve()
-      })
-
-      recorder.start()
-      const frameDurationMs = 1000 / fps
-      for (const frame of frames) {
-        ctx.clearRect(0, 0, outputCanvas.width, outputCanvas.height)
-        ctx.drawImage(frame, 0, 0)
-        await new Promise((r) => setTimeout(r, frameDurationMs))
-      }
-      recorder.stop()
-      await stopped
-      return new Blob(chunks, { type: 'video/webm' })
-    }
-
     const handleExport = async (kind: ExportKind) => {
       const filenameBase = currentProjectName || 'untitled'
       if (kind.kind === 'copySvg') {
-        const svg = buildStandaloneSvg()
+        const svg = exporter.buildStandaloneSvg()
         navigator.clipboard.writeText(svg).catch(() => {
           downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
         })
       } else if (kind.kind === 'downloadSvg') {
-        downloadBlob(new Blob([buildStandaloneSvg()], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
+        downloadBlob(new Blob([exporter.buildStandaloneSvg()], { type: 'image/svg+xml' }), `${filenameBase}.svg`)
       } else if (kind.kind === 'downloadAnimatedSvg') {
-        downloadBlob(new Blob([buildAnimatedSvg()], { type: 'image/svg+xml' }), `${filenameBase}-animated.svg`)
+        downloadBlob(
+          new Blob([exporter.buildAnimatedSvg()], { type: 'image/svg+xml' }),
+          `${filenameBase}-animated.svg`,
+        )
       } else if (kind.kind === 'downloadRaster') {
         try {
-          const blob = await rasterize(kind.format, kind.scale, kind.transparent)
+          const blob = await exporter.rasterize(kind.format, kind.scale, kind.transparent)
           downloadBlob(blob, `${filenameBase}.${kind.format}`)
         } catch {
           // Best-effort export — silently drop on rasterization failure.
         }
       } else if (kind.kind === 'downloadGif') {
         try {
-          const blob = await exportGif(kind.fps, kind.scale)
+          const blob = await exporter.exportGif(kind.fps, kind.scale)
           downloadBlob(blob, `${filenameBase}.gif`)
         } catch {
           // Best-effort export — silently drop on encoding failure.
         }
       } else if (kind.kind === 'downloadVideo') {
         try {
-          const blob = await exportVideo(kind.fps, kind.scale)
+          const blob = await exporter.exportVideo(kind.fps, kind.scale)
           downloadBlob(blob, `${filenameBase}.webm`)
         } catch {
           // Best-effort export — silently drop on recording failure.
@@ -937,12 +604,12 @@ function PaperCanvas() {
         handleTransformKeyframeRequest(req.pathId, req.property, req.time, req.value, req.easing)
       }
       if (state.isPlaying !== prevState.isPlaying) {
-        if (state.isPlaying) startPlaybackLoop()
-        else stopPlaybackLoop()
+        if (state.isPlaying) playback.start()
+        else playback.stop()
       }
       if (state.playheadMs !== prevState.playheadMs || state.animation !== prevState.animation) {
         scope.activate()
-        applyAnimationAtTime(state.playheadMs)
+        applyAnimationAtTime(contentLayer, state.animation, state.playheadMs)
       }
       // Keyframe/duration edits don't touch Paper.js geometry, so redrawOverlay() (the usual
       // autosave trigger) never runs for them — schedule a save directly instead.
@@ -953,7 +620,7 @@ function PaperCanvas() {
 
     return () => {
       if (autosaveTimeout) clearTimeout(autosaveTimeout)
-      stopPlaybackLoop()
+      playback.stop()
       resizeObserver.disconnect()
       scheduleAutosaveRef.current = null
       window.removeEventListener('keydown', handleKeyDown)
