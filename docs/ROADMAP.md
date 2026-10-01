@@ -34,7 +34,7 @@ Animation/export logic is split the same way `tools.ts`/`hitTest.ts`/`overlay.ts
 
 ## Known gaps / not done
 
-- **No auto-keying of *new* keyframes.** Direct manipulation while in Animate mode (dragging a shape, Properties panel position/color edits) now updates an *existing* keyframe at exactly the current playhead time if one is there (see "Direct manipulation now updates existing keyframes" below) — but if the property has no keyframe at that exact time, the edit still just mutates the live path with no connection to the keyframe system, and the next scrub silently overwrites it. Whether that should instead auto-create a new keyframe (After-Effects-style) or require an explicit action is still an open design question, not built.
+- **No live rotation/scale/width/height direct-manipulation sources to key from.** `syncKeyframesAfterDirectEdit`/auto-keying (see below) only covers x/y and fill/stroke color, because those are the only properties the UI currently lets you change by directly touching the canvas or Properties panel (drag to move, color picker for fill/stroke). There's no resize or rotate handle in the app, so width/height/rotation/scale can only ever be keyframed by typing into the Timeline's own fields — nothing to extend here until a handle exists.
 - Easing can't be edited on an existing keyframe after the fact (delete + re-add only).
 - Rest-geometry pruning (see the rotation/scale note above).
 - GIF/video export always renders exactly one pass regardless of the "Loop timeline playback" setting — a looping GIF is a separate, unrequested feature.
@@ -49,8 +49,14 @@ Two compounding bugs, both found from a user report ("moving to a timeframe does
 
 Verified precisely: keyed X at 355 (t=0) and 555 (t≈end), confirmed the field showed ~455 at the midpoint scrub and progressed smoothly (405→573) across five samples during actual playback — not just manual scrub clicks.
 
-## Direct manipulation now updates existing keyframes
+## Direct manipulation extends animations already in progress
 
-First half of the "no auto-keying" gap above: dragging a shape (or editing its position/fill/stroke via the Properties panel) while in Animate mode now updates a keyframe that already exists at exactly the current playhead time, instead of silently drifting from it until the next scrub wipes the edit out. Deliberately conservative — `withKeyframeValueUpdated()` (`animation.ts`) only updates the value of a keyframe already at that exact time (within the same 1ms epsilon `withKeyframeMoved`/`withKeyframeRemoved` use); it never creates one. `syncKeyframesAfterDirectEdit()` (`canvasEngine/animationPlayback.ts`) is the shared hook — called from the Select tool's drag-commit (`tools.ts`) and from `PaperCanvas.tsx`'s `applyPropsEdit` (position/stroke/fill edits) — and checks x/y and both color trios.
+Resolves the "no auto-keying" gap: dragging a shape (or editing its position/fill/stroke via the Properties panel) while in Animate mode now keeps the keyframe system in sync. The design call made here (not explicitly specified, picked as the safest default): **direct manipulation extends an animation already in progress — it never starts a new one.**
 
-Verified: keyed X at t=0 (355), dragged the shape at that same time to ~476 — the existing keyframe updated (stayed at 1 keyframe, not 2), and the new value survived a scrub-away-and-back (confirming the stored keyframe changed, not just the live display). Confirmed the inverse too: dragging with no keyframe present at the current time creates none (0 keyframes before and after), matching the "update-only, never auto-create" scope.
+- If the property already has a keyframe at exactly the current playhead time, its value is updated (time/easing unchanged).
+- If the property is already animated (has a track from being keyed at least once for this path) but has no keyframe at this exact time, a new one is inserted there, inheriting easing from whichever existing keyframe is nearest in time — so posing a new frame doesn't reset the curve to linear.
+- If the property has never been keyframed for this path at all, direct manipulation is left exactly as it was: a plain, unrecorded edit, same as Draw mode. Dragging a shape you've never animated doesn't suddenly start animating it.
+
+`withKeyframeAutoInserted()` (`animation.ts`) implements this; `syncKeyframesAfterDirectEdit()` (`canvasEngine/animationPlayback.ts`) is the shared hook — called from the Select tool's drag-commit (`tools.ts`) and from `PaperCanvas.tsx`'s `applyPropsEdit` (position/stroke/fill edits) — and checks x/y and both color trios (the only properties currently changeable by direct manipulation — see the known-gaps note on rotation/scale/width/height above).
+
+Verified all three cases: dragging at an already-keyed time updates that keyframe (1→1, value changes); dragging at a new time on an already-animated property inserts a new keyframe (1→2) whose value survives a scrub-away-and-back; dragging a property that's never been animated creates nothing (0→0), confirmed as a control alongside the other two in the same test run.

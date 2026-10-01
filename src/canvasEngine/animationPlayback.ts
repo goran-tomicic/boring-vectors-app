@@ -145,17 +145,18 @@ export function createPlaybackController(storeRef: { current: EditorState }): Pl
 
 /**
  * After a direct edit to `path` (drag, Properties panel position/color edit) while in Animate
- * mode, updates any keyframes that already exist at exactly the current playhead time to match
- * — so adjusting a pose you're already parked on updates it, instead of silently drifting from
- * it on the next scrub. Deliberately does not create new keyframes; see the "no auto-keying"
- * note in docs/ROADMAP.md for why that's a separate, undecided design question.
+ * mode, extends any animation already in progress on that path to match: a property that's
+ * already keyframed gets its keyframe at the current playhead time updated (or a new one
+ * inserted there, if it's animated but wasn't yet keyed at this exact moment). A property
+ * that's never been keyframed for this path is left alone — direct manipulation only continues
+ * an animation you've started, it never starts one on its own.
  */
 export function syncKeyframesAfterDirectEdit(path: paper.Path, storeRef: { current: EditorState }) {
   if (storeRef.current.appMode !== 'animate') return
   const pathId = path.name
   if (!pathId) return
   const t = storeRef.current.playheadMs
-  const update = storeRef.current.updateKeyframeValueIfExists
+  const update = storeRef.current.autoKeyframeIfAnimated
 
   update(pathId, 'x', t, path.bounds.x)
   update(pathId, 'y', t, path.bounds.y)

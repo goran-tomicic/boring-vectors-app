@@ -241,13 +241,16 @@ export function withKeyframeMoved(
 }
 
 /**
- * Returns a new clip with the value of the keyframe nearest `time` (within epsilon) updated —
- * its time and easing are left unchanged. A no-op if no such keyframe exists (this is
- * deliberately conservative: it updates an existing keyframe at the exact current time, it
- * never creates a new one — see docs/ROADMAP.md's "no auto-keying" gap for why that's a
- * separate, undecided piece of design rather than something this silently does too).
+ * If `property` already has a track for `pathId` (i.e. it's already being animated) and there's
+ * a keyframe at exactly `time`, updates its value (time/easing unchanged). If the property is
+ * already animated but has no keyframe at exactly `time`, inserts a new one there — extends an
+ * animation you've already started by posing it at a new time, rather than requiring a trip
+ * back to the Timeline to type a number. If the property has never been keyframed for this path
+ * at all, this is a no-op: an unanimated property's direct edits stay plain, unrecorded edits,
+ * same as Draw mode — direct manipulation never starts a new animation on its own, only extends
+ * one that already exists.
  */
-export function withKeyframeValueUpdated(
+export function withKeyframeAutoInserted(
   clip: AnimationClip,
   pathId: string,
   property: AnimatableProperty,
@@ -255,9 +258,17 @@ export function withKeyframeValueUpdated(
   value: number,
 ): AnimationClip {
   const track = findPropertyTrack(clip, pathId, property)
-  const keyframe = track?.keyframes.find((k) => Math.abs(k.time - time) <= KEYFRAME_MERGE_EPSILON_MS)
-  if (!track || !keyframe) return clip
-  return withKeyframeSet(clip, pathId, property, keyframe.time, value, keyframe.easing)
+  if (!track) return clip
+
+  const existing = track.keyframes.find((k) => Math.abs(k.time - time) <= KEYFRAME_MERGE_EPSILON_MS)
+  if (existing) {
+    return withKeyframeSet(clip, pathId, property, existing.time, value, existing.easing)
+  }
+
+  // New keyframe — inherit easing from whichever existing keyframe is nearest in time, so
+  // posing a new frame doesn't reset the curve back to linear.
+  const nearest = [...track.keyframes].sort((a, b) => Math.abs(a.time - time) - Math.abs(b.time - time))[0]
+  return withKeyframeSet(clip, pathId, property, time, value, nearest?.easing ?? 'linear')
 }
 
 // --- SMIL export (docs/ROADMAP.md step 4) ---
