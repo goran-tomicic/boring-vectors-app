@@ -11,7 +11,7 @@ function ZoomPill() {
       <button
         type="button"
         className="ZoomPill-btn"
-        title="Toggle grid (G)"
+        title="Toggle the canvas grid overlay on/off (G). Grid color and opacity can be customized in Settings."
         aria-pressed={gridVisible}
         onClick={toggleGrid}
       >

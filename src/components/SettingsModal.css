@@ -55,6 +55,34 @@
   padding: 4px 6px;
 }
 
+.SettingsModal-gridRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--bv-text-faint);
+  font-size: 12px;
+}
+
+.SettingsModal-gridRow input[type='color'] {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--bv-border);
+  border-radius: 4px;
+  background: var(--bv-panel-raised);
+  flex: 0 0 auto;
+}
+
+.SettingsModal-gridRow input[type='range'] {
+  flex: 1 1 auto;
+}
+
+.SettingsModal-gridRow span {
+  width: 36px;
+  text-align: right;
+  flex: 0 0 auto;
+}
+
 .SettingsModal-themeRow {
   display: flex;
   gap: 6px;

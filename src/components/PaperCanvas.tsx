@@ -58,6 +58,8 @@ function PaperCanvas() {
   const gridVisible = useEditorStore((s) => s.canvas.gridVisible)
   const backgroundColor = useEditorStore((s) => s.canvas.backgroundColor)
   const backgroundOpacity = useEditorStore((s) => s.canvas.backgroundOpacity)
+  const gridColor = useEditorStore((s) => s.canvas.gridColor)
+  const gridOpacity = useEditorStore((s) => s.canvas.gridOpacity)
 
   // Store snapshot read inside Paper event handlers via getState() — handlers
   // are created once at mount and must always see current tool/selection.
@@ -657,11 +659,20 @@ function PaperCanvas() {
     scope.activate()
     const backgroundLayer = scope.project.layers.find((l) => l.name === 'background')
     if (!backgroundLayer) return
-    drawBackground(backgroundLayer, width, height, gridVisible, backgroundColor, backgroundOpacity)
+    drawBackground(
+      backgroundLayer,
+      width,
+      height,
+      gridVisible,
+      backgroundColor,
+      backgroundOpacity,
+      gridColor,
+      gridOpacity,
+    )
     fitCanvasInView(scope.view, width, height)
     useEditorStore.getState().setViewTransform(getViewTransform(scope.view))
     scheduleAutosaveRef.current?.()
-  }, [width, height, gridVisible, backgroundColor, backgroundOpacity])
+  }, [width, height, gridVisible, backgroundColor, backgroundOpacity, gridColor, gridOpacity])
 
   return <canvas ref={canvasRef} className="CanvasWrap-canvas" />
 }
