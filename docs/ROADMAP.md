@@ -32,13 +32,17 @@ Animation/export logic is split the same way `tools.ts`/`hitTest.ts`/`overlay.ts
 - `src/canvasEngine/svgExport.ts` — `createSvgExporter`: static SVG, animated SVG (SMIL), raster (PNG/JPG), GIF, video.
 - `src/components/Timeline.tsx` — the UI: one stacked track row per animatable property, driven by a `PROPERTY_DEFS`/`COLOR_ROW_DEFS` table (adding a new *absolute-valued* property is a table entry + a write branch in `animationPlayback.ts`, not a UI rewrite), docked as an overlay inside `CanvasWrap.tsx` rather than a flex layout sibling (so opening it never resizes the canvas — see the Rulers-desync bug this fixed).
 
+## Testing
+
+`npm test` runs Vitest unit tests (`src/**/*.test.ts` — currently just `animation.ts`'s pure logic: interpolation, immutable keyframe updates, auto-key, SMIL generation). `npm run test:e2e` runs the checked-in Playwright suite (`e2e/`) against a dev server it starts itself — tools, projects, export, and animation/playback/auto-key, all against a real browser. `e2e/helpers.ts` has the shared setup (`importSampleShape`, `enableAnimateMode`, `timelineTrackBox`). See "Known gaps" below for what isn't covered yet.
+
 ## Known gaps / not done
 
 - **No live rotation/scale/width/height direct-manipulation sources to key from.** `syncKeyframesAfterDirectEdit`/auto-keying (see below) only covers x/y and fill/stroke color, because those are the only properties the UI currently lets you change by directly touching the canvas or Properties panel (drag to move, color picker for fill/stroke). There's no resize or rotate handle in the app, so width/height/rotation/scale can only ever be keyframed by typing into the Timeline's own fields — nothing to extend here until a handle exists.
 - Easing can't be edited on an existing keyframe after the fact (delete + re-add only).
 - Rest-geometry pruning (see the rotation/scale note above).
 - GIF/video export always renders exactly one pass regardless of the "Loop timeline playback" setting — a looping GIF is a separate, unrequested feature.
-- No automated test coverage (Vitest/Playwright) — deferred project-wide per `CLAUDE.md`; all verification this far has been manual smoke scripts per change, not checked into the repo.
+- Automated tests cover `animation.ts`'s pure logic (36 Vitest unit tests) and core workflows end-to-end (19 Playwright specs in `e2e/`: tools, projects, export, animation/playback/auto-key). Not yet covered: `editorStore.ts`'s other slices, `canvasEngine/*` in isolation (hit-testing, overlay drawing, SVG import), GIF/video export (only exercised manually so far — real-time recording and Web Worker encoding don't fit neatly into a fast e2e run), and PNG/SVG-content-correctness assertions beyond "a file downloaded and isn't empty".
 
 ## Fixed: Timeline fields/overlay went stale while scrubbing
 
