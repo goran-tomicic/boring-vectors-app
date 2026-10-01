@@ -63,6 +63,8 @@ interface CanvasState {
   zoom: number
   backgroundColor: string
   backgroundOpacity: number
+  gridColor: string
+  gridOpacity: number
 }
 
 interface SettingsState {
@@ -96,6 +98,8 @@ export interface EditorState {
   toggleGrid: () => void
   setBackgroundColor: (color: string) => void
   setBackgroundOpacity: (opacity: number) => void
+  setGridColor: (color: string) => void
+  setGridOpacity: (opacity: number) => void
   setStatus: (status: string) => void
   /** Replaces the whole selection. */
   setSelection: (pathIds: string[], segmentIndex?: number | null) => void
@@ -202,7 +206,16 @@ export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selectedPathIds: [],
   selectedSegmentIndex: null,
-  canvas: { width: 800, height: 600, gridVisible: true, zoom: 1, backgroundColor: '#1f2028', backgroundOpacity: 1 },
+  canvas: {
+    width: 800,
+    height: 600,
+    gridVisible: false,
+    zoom: 1,
+    backgroundColor: '#1f2028',
+    backgroundOpacity: 1,
+    gridColor: '#35363f',
+    gridOpacity: 1,
+  },
   settings: { scrollZoomOnly: false, theme: 'dark', animationEnabled: false, loopPlayback: false },
   status: 'Ready',
   setTool: (tool) => set({ tool }),
@@ -217,6 +230,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   setBackgroundOpacity: (opacity) =>
     set((state) => ({
       canvas: { ...state.canvas, backgroundOpacity: Math.min(1, Math.max(0, opacity)) },
+    })),
+  setGridColor: (color) =>
+    set((state) => ({ canvas: { ...state.canvas, gridColor: color } })),
+  setGridOpacity: (opacity) =>
+    set((state) => ({
+      canvas: { ...state.canvas, gridOpacity: Math.min(1, Math.max(0, opacity)) },
     })),
   setStatus: (status) => set({ status }),
   setSelection: (pathIds, segmentIndex = null) =>

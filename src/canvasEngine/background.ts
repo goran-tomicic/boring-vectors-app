@@ -3,8 +3,8 @@ import paper from 'paper'
 const VIEW_PADDING = 40
 const GRID_SIZE = 20
 const GRID_MAJOR_EVERY = 5
-const GRID_MINOR_COLOR = '#2a2b33'
-const GRID_MAJOR_COLOR = '#35363f'
+export const DEFAULT_GRID_COLOR = '#35363f'
+export const DEFAULT_GRID_OPACITY = 1
 export const DEFAULT_ARTBOARD_FILL = '#1f2028'
 const ARTBOARD_STROKE = '#35363f'
 
@@ -15,6 +15,8 @@ export function drawBackground(
   showGrid: boolean,
   fillColor: string = DEFAULT_ARTBOARD_FILL,
   fillOpacity: number = 1,
+  gridColor: string = DEFAULT_GRID_COLOR,
+  gridOpacity: number = DEFAULT_GRID_OPACITY,
 ) {
   layer.removeChildren()
 
@@ -32,6 +34,11 @@ export function drawBackground(
 
   if (!showGrid) return
 
+  const majorColor = new paper.Color(gridColor)
+  majorColor.alpha = gridOpacity
+  const minorColor = new paper.Color(gridColor)
+  minorColor.alpha = gridOpacity * 0.5
+
   const cols = Math.floor(width / GRID_SIZE)
   const rows = Math.floor(height / GRID_SIZE)
 
@@ -41,7 +48,7 @@ export function drawBackground(
     new paper.Path.Line({
       from: [x, 0],
       to: [x, height],
-      strokeColor: isMajor ? GRID_MAJOR_COLOR : GRID_MINOR_COLOR,
+      strokeColor: isMajor ? majorColor : minorColor,
       strokeWidth: isMajor ? 1 : 0.5,
       parent: layer,
     })
@@ -53,7 +60,7 @@ export function drawBackground(
     new paper.Path.Line({
       from: [0, y],
       to: [width, y],
-      strokeColor: isMajor ? GRID_MAJOR_COLOR : GRID_MINOR_COLOR,
+      strokeColor: isMajor ? majorColor : minorColor,
       strokeWidth: isMajor ? 1 : 0.5,
       parent: layer,
     })

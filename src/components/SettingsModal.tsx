@@ -16,6 +16,10 @@ function SettingsModal() {
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
+  const gridColor = useEditorStore((s) => s.canvas.gridColor)
+  const setGridColor = useEditorStore((s) => s.setGridColor)
+  const gridOpacity = useEditorStore((s) => s.canvas.gridOpacity)
+  const setGridOpacity = useEditorStore((s) => s.setGridOpacity)
 
   if (!isOpen) return null
 
@@ -64,6 +68,28 @@ function SettingsModal() {
             >
               Light
             </button>
+          </div>
+        </div>
+
+        <div className="SettingsModal-section">
+          <div className="SettingsModal-label">Grid color &amp; opacity</div>
+          <div className="SettingsModal-gridRow">
+            <input
+              type="color"
+              value={gridColor}
+              onChange={(e) => setGridColor(e.target.value)}
+              title="Grid color"
+            />
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={gridOpacity}
+              onChange={(e) => setGridOpacity(Number(e.target.value))}
+              title="Grid opacity"
+            />
+            <span>{Math.round(gridOpacity * 100)}%</span>
           </div>
         </div>
 
