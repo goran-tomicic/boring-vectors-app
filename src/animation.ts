@@ -327,7 +327,6 @@ export function buildSmilAnimate(
   return `<animate attributeName="${attributeName}" values="${values}" keyTimes="${keyTimes}" dur="${durationMs}ms" begin="0s" fill="freeze"${calcMode}${keySplines}/>`
 }
 
-/** All SMIL <animate> element strings this path track supports exporting (opacity, fill, stroke — see the note above). */
 /** A color's R/G/B channel tracks combined into a single <animate> on the given SVG color attribute (fill/stroke), or null if the color has fewer than 2 keyframes. R/G/B are always keyed together (see Timeline.tsx), so R's keyframe times are canonical. */
 function buildSmilColorAnimate(
   track: PathTrack,
@@ -361,6 +360,7 @@ function buildSmilColorAnimate(
   )
 }
 
+/** All SMIL <animate> element strings this path track supports exporting (opacity, fill, stroke — see the note above). */
 export function buildSmilAnimatesForPath(track: PathTrack, durationMs: number): string[] {
   const elements: string[] = []
 

@@ -47,4 +47,4 @@ All 7 build-order steps are done, including step 7's new-project scope (undo/red
 
 Post-v1 work (multiple projects, export, animation, animated export) is done per `docs/ROADMAP.md` — see that file for current state and known gaps.
 
-Automated test scaffolding (Vitest/Playwright) has not been set up — deferred by user request. All verification so far has been manual (dev server + one-off headless-browser scripts per change, not checked into the repo).
+Automated test scaffolding is set up: Vitest for unit tests (`src/**/*.test.ts`, run with `npm test`) and a checked-in Playwright e2e suite (`e2e/`, run with `npm run test:e2e`) covering tools, projects, export, and animation. Run both before merging a change that touches their areas; see `docs/ROADMAP.md` for what's covered and what isn't yet.
