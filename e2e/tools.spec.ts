@@ -73,6 +73,28 @@ test.describe('drawing tools', () => {
     expect(changed).toBe(true)
   })
 
+  test('select tool shows node anchors; dragging one switches to the Node tool', async ({ page }) => {
+    // Sample star (sampleShapes.ts) viewBox is 0..100: M50 5 L61 35 L95 35 L68 55 L79 90
+    // L50 70 L21 90 L32 55 L5 35 L39 35 Z. Vertex (50,70) is a concave inner point, well
+    // inside the bounding box — unlike the tip vertices, it won't collide with the
+    // resize/rotate handles that sit on the box's corners/edges/top-center.
+    const before = await readPositionProps(page)
+    const vertex = await pathPointToScreen(
+      page,
+      before.x + (50 / 100) * before.w,
+      before.y + (70 / 100) * before.h,
+    )
+
+    await page.mouse.move(vertex.x, vertex.y)
+    await page.mouse.down()
+    await page.mouse.move(vertex.x + 50, vertex.y + 20, { steps: 8 })
+    await page.mouse.up()
+
+    await expect(page.locator('.Toolbar-btn[title="Node (N)"]')).toHaveAttribute('aria-pressed', 'true')
+    const after = await readPositionProps(page)
+    expect(after).not.toEqual(before) // the dragged vertex actually moved the path
+  })
+
   test('node tool switches without error and keeps the selection', async ({ page }) => {
     await page.keyboard.press('n')
     await expect(positionHeading(page)).toBeVisible()

@@ -196,6 +196,7 @@ function PaperCanvas() {
           } else if (tool === 'select') {
             drawSelectionHighlight(overlayLayer, path, zoom)
             drawTransformHandles(overlayLayer, path, zoom)
+            drawNodeOverlay(overlayLayer, path, zoom, null, false)
           } else {
             drawSelectionHighlight(overlayLayer, path, zoom)
           }

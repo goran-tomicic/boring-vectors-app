@@ -1,7 +1,7 @@
 import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
 import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
-import { type OverlayHit, type ResizeCorner, hitTestOverlay } from './overlay'
+import { type OverlayHit, type ResizeCorner, hitTestOverlay, drawTransformLabel } from './overlay'
 import { syncKeyframesAfterDirectEdit } from './animationPlayback'
 
 const MIN_RESIZE_SIZE = 2
@@ -78,12 +78,23 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   let transformStartAngle = 0
   let transformTotalRotationDeg = 0
 
+  // Node-anchor drag state — lets a node be grabbed straight from the Select tool (anchors are
+  // drawn, without handle-line clutter, whenever it has a single selection — see
+  // drawNodeOverlay's showHandles param) instead of requiring a prior switch to the Node tool.
+  // Paper's active tool can't be switched mid-gesture (see PaperCanvas.tsx's tool-activation
+  // subscription — it would stop routing drag/up events here), so the actual segment mutation
+  // happens inline and the store's `tool` only flips to 'node' once the gesture ends.
+  let draggingAnchorPath: paper.Path | null = null
+  let draggingAnchorIndex: number | null = null
+
   const tool = new scope.Tool()
   tool.onMouseDown = (event: paper.ToolEvent) => {
     marqueeStart = null
     dragPaths = []
     transformPath = null
     transformHit = null
+    draggingAnchorPath = null
+    draggingAnchorIndex = null
 
     const { selectedPathIds } = storeRef.current
     if (selectedPathIds.length === 1) {
@@ -97,6 +108,13 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
           transformCenter = activePath.position
           transformStartAngle = event.point.subtract(transformCenter).angle
           transformTotalRotationDeg = 0
+          return
+        }
+        if (overlayHit && overlayHit.type === 'anchor') {
+          draggingAnchorPath = activePath
+          draggingAnchorIndex = overlayHit.segmentIndex
+          storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
+          redrawOverlay()
           return
         }
       }
@@ -141,6 +159,9 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
           transformTotalRotationDeg += delta
           transformStartAngle = angle
         }
+        redrawOverlay()
+        drawTransformLabel(overlayLayer, event.point, `${Math.round(transformTotalRotationDeg)}°`, scope.view.zoom)
+        return
       } else if (transformHit.type === 'resize' && transformStartBounds) {
         const nextBounds = computeResizedBounds(
           transformStartBounds,
@@ -149,7 +170,21 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
           event.modifiers.shift,
         )
         transformPath.bounds = nextBounds
+        redrawOverlay()
+        drawTransformLabel(
+          overlayLayer,
+          event.point,
+          `${Math.round(nextBounds.width)} × ${Math.round(nextBounds.height)}`,
+          scope.view.zoom,
+        )
+        return
       }
+      redrawOverlay()
+      return
+    }
+    if (draggingAnchorPath && draggingAnchorIndex !== null) {
+      const segment = draggingAnchorPath.segments[draggingAnchorIndex]
+      if (segment) segment.point = segment.point.add(event.delta)
       redrawOverlay()
       return
     }
@@ -180,6 +215,16 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       transformCenter = null
       transformTotalRotationDeg = 0
       commitHistory()
+      return
+    }
+    if (draggingAnchorPath) {
+      draggingAnchorPath = null
+      draggingAnchorIndex = null
+      commitHistory()
+      // Switches Paper's active tool to Node (see the draggingAnchorPath comment above) —
+      // deferred until the gesture is fully done so this tool keeps receiving its own
+      // drag/up events throughout, instead of Paper rerouting them to Node mid-drag.
+      storeRef.current.setTool('node')
       return
     }
     if (dragPaths.length > 0) {
