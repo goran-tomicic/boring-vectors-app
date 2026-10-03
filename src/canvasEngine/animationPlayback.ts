@@ -5,6 +5,7 @@ import {
   type PathTrack,
   type SegmentSnapshot,
   evaluateProperty,
+  findPropertyTrack,
 } from '../animation'
 import type { EditorState } from '../store/editorStore'
 import { findPathById } from './hitTest'
@@ -150,8 +151,18 @@ export function createPlaybackController(storeRef: { current: EditorState }): Pl
  * inserted there, if it's animated but wasn't yet keyed at this exact moment). A property
  * that's never been keyframed for this path is left alone — direct manipulation only continues
  * an animation you've started, it never starts one on its own.
+ *
+ * `transform.rotationDeltaDeg` carries the net rotation (in degrees) applied by a rotate-handle
+ * drag gesture — rotation keyframes store an absolute angle relative to captured rest geometry
+ * (see PathTrack.restSegments), which live Paper.js state can't be read back as, so the caller
+ * reports the delta and this adds it to whatever the rotation track currently evaluates to at
+ * the playhead instead.
  */
-export function syncKeyframesAfterDirectEdit(path: paper.Path, storeRef: { current: EditorState }) {
+export function syncKeyframesAfterDirectEdit(
+  path: paper.Path,
+  storeRef: { current: EditorState },
+  transform?: { rotationDeltaDeg?: number },
+) {
   if (storeRef.current.appMode !== 'animate') return
   const pathId = path.name
   if (!pathId) return
@@ -160,6 +171,8 @@ export function syncKeyframesAfterDirectEdit(path: paper.Path, storeRef: { curre
 
   update(pathId, 'x', t, path.bounds.x)
   update(pathId, 'y', t, path.bounds.y)
+  update(pathId, 'width', t, path.bounds.width)
+  update(pathId, 'height', t, path.bounds.height)
   if (path.fillColor) {
     update(pathId, 'fillColorR', t, Math.round(path.fillColor.red * 255))
     update(pathId, 'fillColorG', t, Math.round(path.fillColor.green * 255))
@@ -169,5 +182,11 @@ export function syncKeyframesAfterDirectEdit(path: paper.Path, storeRef: { curre
     update(pathId, 'strokeColorR', t, Math.round(path.strokeColor.red * 255))
     update(pathId, 'strokeColorG', t, Math.round(path.strokeColor.green * 255))
     update(pathId, 'strokeColorB', t, Math.round(path.strokeColor.blue * 255))
+  }
+
+  const rotationDeltaDeg = transform?.rotationDeltaDeg
+  if (rotationDeltaDeg && findPropertyTrack(storeRef.current.animation, pathId, 'rotation')) {
+    const current = evaluateProperty(storeRef.current.animation, pathId, 'rotation', t) ?? 0
+    update(pathId, 'rotation', t, current + rotationDeltaDeg)
   }
 }

@@ -1,8 +1,48 @@
 import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
 import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
-import { type OverlayHit, hitTestOverlay } from './overlay'
+import { type OverlayHit, type ResizeCorner, hitTestOverlay } from './overlay'
 import { syncKeyframesAfterDirectEdit } from './animationPlayback'
+
+const MIN_RESIZE_SIZE = 2
+const ROTATE_SNAP_DEGREES = 15
+
+/** Computes the new bounds for a resize drag, anchored to the opposite side/corner from `corner`. Shift preserves the original aspect ratio when dragging a corner handle. Exported for unit testing — pure geometry, no live Paper.js scene involved. */
+export function computeResizedBounds(
+  start: paper.Rectangle,
+  corner: ResizeCorner,
+  point: paper.Point,
+  keepAspect: boolean,
+): paper.Rectangle {
+  let left = start.left
+  let right = start.right
+  let top = start.top
+  let bottom = start.bottom
+  if (corner.includes('l')) left = point.x
+  if (corner.includes('r')) right = point.x
+  if (corner.includes('t')) top = point.y
+  if (corner.includes('b')) bottom = point.y
+
+  const isCornerHandle = corner.length === 2
+  if (keepAspect && isCornerHandle && start.width > 0 && start.height > 0) {
+    const aspect = start.width / start.height
+    const width = Math.abs(right - left)
+    const height = Math.abs(width / aspect)
+    if (corner.includes('t')) top = bottom - height
+    else bottom = top + height
+  }
+
+  if (right - left < MIN_RESIZE_SIZE) {
+    if (corner.includes('l')) left = right - MIN_RESIZE_SIZE
+    else right = left + MIN_RESIZE_SIZE
+  }
+  if (bottom - top < MIN_RESIZE_SIZE) {
+    if (corner.includes('t')) top = bottom - MIN_RESIZE_SIZE
+    else bottom = top + MIN_RESIZE_SIZE
+  }
+
+  return new paper.Rectangle(new paper.Point(left, top), new paper.Point(right, bottom))
+}
 
 export const ACCENT = '#aa3bff'
 export const MARQUEE_FILL = 'rgba(170, 59, 255, 0.12)'
@@ -30,12 +70,39 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   let marqueeAdditive = false
   let marqueeRect: paper.Path | null = null
 
+  // Resize/rotate handle drag state — mutually exclusive with dragPaths/marqueeStart above.
+  let transformPath: paper.Path | null = null
+  let transformHit: OverlayHit | null = null
+  let transformStartBounds: paper.Rectangle | null = null
+  let transformCenter: paper.Point | null = null
+  let transformStartAngle = 0
+  let transformTotalRotationDeg = 0
+
   const tool = new scope.Tool()
   tool.onMouseDown = (event: paper.ToolEvent) => {
-    const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
-    const { selectedPathIds } = storeRef.current
     marqueeStart = null
     dragPaths = []
+    transformPath = null
+    transformHit = null
+
+    const { selectedPathIds } = storeRef.current
+    if (selectedPathIds.length === 1) {
+      const activePath = findPathById(contentLayer, selectedPathIds[0])
+      if (activePath) {
+        const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
+        if (overlayHit && (overlayHit.type === 'resize' || overlayHit.type === 'rotate')) {
+          transformPath = activePath
+          transformHit = overlayHit
+          transformStartBounds = activePath.bounds.clone()
+          transformCenter = activePath.position
+          transformStartAngle = event.point.subtract(transformCenter).angle
+          transformTotalRotationDeg = 0
+          return
+        }
+      }
+    }
+
+    const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
 
     if (hit) {
       const hitId = hit.name
@@ -62,6 +129,30 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
     redrawOverlay()
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
+    if (transformPath && transformHit && transformCenter) {
+      if (transformHit.type === 'rotate') {
+        let angle = event.point.subtract(transformCenter).angle
+        if (event.modifiers.shift) {
+          angle = Math.round(angle / ROTATE_SNAP_DEGREES) * ROTATE_SNAP_DEGREES
+        }
+        const delta = angle - transformStartAngle
+        if (delta !== 0) {
+          transformPath.rotate(delta, transformCenter)
+          transformTotalRotationDeg += delta
+          transformStartAngle = angle
+        }
+      } else if (transformHit.type === 'resize' && transformStartBounds) {
+        const nextBounds = computeResizedBounds(
+          transformStartBounds,
+          transformHit.corner,
+          event.point,
+          event.modifiers.shift,
+        )
+        transformPath.bounds = nextBounds
+      }
+      redrawOverlay()
+      return
+    }
     if (dragPaths.length > 0) {
       for (const path of dragPaths) {
         path.position = path.position.add(event.delta)
@@ -81,6 +172,16 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
     }
   }
   tool.onMouseUp = (event: paper.ToolEvent) => {
+    if (transformPath) {
+      syncKeyframesAfterDirectEdit(transformPath, storeRef, { rotationDeltaDeg: transformTotalRotationDeg })
+      transformPath = null
+      transformHit = null
+      transformStartBounds = null
+      transformCenter = null
+      transformTotalRotationDeg = 0
+      commitHistory()
+      return
+    }
     if (dragPaths.length > 0) {
       for (const path of dragPaths) syncKeyframesAfterDirectEdit(path, storeRef)
       dragPaths = []
@@ -139,6 +240,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
     if (!dragPath || !drag) return
+    if (drag.type !== 'anchor' && drag.type !== 'handleIn' && drag.type !== 'handleOut') return
     const segment = dragPath.segments[drag.segmentIndex]
     if (!segment) return
 

@@ -3,7 +3,13 @@ import paper from 'paper'
 import { useEditorStore, type PropsEdit, type ExportKind } from '../store/editorStore'
 import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngine/hitTest'
-import { clearOverlay, drawSelectionHighlight, drawNodeOverlay, computeSelectedPathProps } from '../canvasEngine/overlay'
+import {
+  clearOverlay,
+  drawSelectionHighlight,
+  drawNodeOverlay,
+  drawTransformHandles,
+  computeSelectedPathProps,
+} from '../canvasEngine/overlay'
 import { importSvgIntoContent } from '../canvasEngine/svgIO'
 import {
   type ToolContext,
@@ -187,6 +193,9 @@ function PaperCanvas() {
           storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
           if (tool === 'node') {
             drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
+          } else if (tool === 'select') {
+            drawSelectionHighlight(overlayLayer, path, zoom)
+            drawTransformHandles(overlayLayer, path, zoom)
           } else {
             drawSelectionHighlight(overlayLayer, path, zoom)
           }

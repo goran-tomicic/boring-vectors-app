@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useEditorStore, type SelectedPathProps } from '../store/editorStore'
 import { findPropertyTrack, hexToRgb, rgbToHex, type AnimatableProperty, type Easing } from '../animation'
 import './Timeline.css'
@@ -55,6 +55,10 @@ function colorChannels(prefix: ColorPrefix): AnimatableProperty[] {
 }
 
 const EASINGS: Easing[] = ['linear', 'easeIn', 'easeOut', 'easeInOut']
+/** Below this many pixels of horizontal movement, a keyframe-handle mousedown→mouseup counts as a click (open the easing editor) rather than a drag (move the keyframe). */
+const CLICK_DRAG_THRESHOLD_PX = 3
+/** How long a click waits before opening the easing editor, so a following second click (dblclick → delete) can cancel it first. */
+const DBLCLICK_WINDOW_MS = 300
 
 const MIN_TIMELINE_HEIGHT = 90
 const MAX_TIMELINE_HEIGHT = 720
@@ -81,6 +85,16 @@ function Timeline() {
   const selectedPathProps = useEditorStore((s) => s.selectedPathProps)
 
   const draggingKeyframe = useRef<{ property: AnimatableProperty; time: number } | null>(null)
+  // A plain click schedules the easing editor to open after this delay instead of opening it
+  // immediately, so a double-click (delete) can cancel it first — otherwise the editor popping
+  // in between the dblclick's two clicks would shift layout and make the second click miss.
+  const pendingEditorTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelPendingEditor = () => {
+    if (pendingEditorTimer.current) {
+      clearTimeout(pendingEditorTimer.current)
+      pendingEditorTimer.current = null
+    }
+  }
 
   const [height, setHeight] = useState(DEFAULT_TIMELINE_HEIGHT)
   const handleResizeStart = (e: React.PointerEvent) => {
@@ -110,11 +124,26 @@ function Timeline() {
   const [valueOverrides, setValueOverrides] = useState<Partial<Record<AnimatableProperty, number>>>({})
   const [colorOverrides, setColorOverrides] = useState<Partial<Record<ColorPrefix, string>>>({})
   const [lastSelectedPathId, setLastSelectedPathId] = useState(selectedPathId)
+  // Keyframe currently showing its easing editor — opened by clicking (not dragging) a
+  // keyframe diamond. `properties` holds all channels that share this keyframe's time (just
+  // one for a plain property row, all three R/G/B channels for a color row).
+  const [editingKeyframe, setEditingKeyframe] = useState<{
+    properties: AnimatableProperty[]
+    time: number
+    label: string
+  } | null>(null)
+
   if (selectedPathId !== lastSelectedPathId) {
     setLastSelectedPathId(selectedPathId)
     setValueOverrides({})
     setColorOverrides({})
+    setEditingKeyframe(null)
   }
+  // Refs can't be touched during render (see the block above, which only adjusts state) —
+  // cancel any pending click-to-open-editor timer as an effect instead, keyed the same way.
+  useEffect(() => {
+    return () => cancelPendingEditor()
+  }, [selectedPathId])
   const [easing, setEasing] = useState<Easing>('linear')
 
   const timeFromX = (clientX: number, rect: DOMRect) => {
@@ -124,23 +153,60 @@ function Timeline() {
 
   const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
     setPlayhead(timeFromX(e.clientX, e.currentTarget.getBoundingClientRect()))
+    setEditingKeyframe(null)
+  }
+
+  const editingKeyframeEasing: Easing | null =
+    selectedPathId && editingKeyframe
+      ? (findPropertyTrack(animation, selectedPathId, editingKeyframe.properties[0])?.keyframes.find(
+          (k) => k.time === editingKeyframe.time,
+        )?.easing ?? 'linear')
+      : null
+
+  const handleChangeEditingEasing = (newEasing: Easing) => {
+    if (!selectedPathId || !editingKeyframe) return
+    for (const property of editingKeyframe.properties) {
+      const kf = findPropertyTrack(animation, selectedPathId, property)?.keyframes.find(
+        (k) => k.time === editingKeyframe.time,
+      )
+      if (kf) setKeyframe(selectedPathId, property, kf.time, kf.value, newEasing)
+    }
+  }
+
+  const handleDeleteEditingKeyframe = () => {
+    if (!selectedPathId || !editingKeyframe) return
+    for (const property of editingKeyframe.properties) {
+      removeKeyframe(selectedPathId, property, editingKeyframe.time)
+    }
+    setEditingKeyframe(null)
   }
 
   const handleKeyframeMouseDown =
-    (property: AnimatableProperty, time: number) => (e: React.MouseEvent<HTMLDivElement>) => {
+    (property: AnimatableProperty, time: number, label: string) => (e: React.MouseEvent<HTMLDivElement>) => {
       e.stopPropagation()
       draggingKeyframe.current = { property, time }
       // Rows all share the same width/offset, so the clicked keyframe's own track row
       // is a stable reference rect for the whole drag, even as the mouse leaves it.
       const rect = e.currentTarget.parentElement!.getBoundingClientRect()
+      const startClientX = e.clientX
+      let moved = false
 
       const handleMove = (moveEvent: MouseEvent) => {
         if (!draggingKeyframe.current || !selectedPathId) return
+        if (Math.abs(moveEvent.clientX - startClientX) > CLICK_DRAG_THRESHOLD_PX) moved = true
         const newTime = timeFromX(moveEvent.clientX, rect)
         moveKeyframe(selectedPathId, draggingKeyframe.current.property, draggingKeyframe.current.time, newTime)
         draggingKeyframe.current = { property: draggingKeyframe.current.property, time: newTime }
       }
       const handleUp = () => {
+        if (!moved && draggingKeyframe.current) {
+          const time = draggingKeyframe.current.time
+          cancelPendingEditor()
+          pendingEditorTimer.current = setTimeout(() => {
+            setEditingKeyframe({ properties: [property], time, label })
+            pendingEditorTimer.current = null
+          }, DBLCLICK_WINDOW_MS)
+        }
         draggingKeyframe.current = null
         window.removeEventListener('mousemove', handleMove)
         window.removeEventListener('mouseup', handleUp)
@@ -200,9 +266,12 @@ function Timeline() {
     const [primaryChannel] = colorChannels(def.prefix)
     draggingKeyframe.current = { property: primaryChannel, time }
     const rect = e.currentTarget.parentElement!.getBoundingClientRect()
+    const startClientX = e.clientX
+    let moved = false
 
     const handleMove = (moveEvent: MouseEvent) => {
       if (!draggingKeyframe.current || !selectedPathId) return
+      if (Math.abs(moveEvent.clientX - startClientX) > CLICK_DRAG_THRESHOLD_PX) moved = true
       const newTime = timeFromX(moveEvent.clientX, rect)
       for (const property of colorChannels(def.prefix)) {
         moveKeyframe(selectedPathId, property, draggingKeyframe.current.time, newTime)
@@ -210,6 +279,14 @@ function Timeline() {
       draggingKeyframe.current = { property: primaryChannel, time: newTime }
     }
     const handleUp = () => {
+      if (!moved && draggingKeyframe.current) {
+        const time = draggingKeyframe.current.time
+        cancelPendingEditor()
+        pendingEditorTimer.current = setTimeout(() => {
+          setEditingKeyframe({ properties: colorChannels(def.prefix), time, label: def.label })
+          pendingEditorTimer.current = null
+        }, DBLCLICK_WINDOW_MS)
+      }
       draggingKeyframe.current = null
       window.removeEventListener('mousemove', handleMove)
       window.removeEventListener('mouseup', handleUp)
@@ -266,6 +343,33 @@ function Timeline() {
           </button>
         </div>
 
+        {editingKeyframe && editingKeyframeEasing && (
+          <div className="Timeline-keyframeEditor">
+            <span className="Timeline-keyframeEditorLabel">
+              {editingKeyframe.label} @ {formatMs(editingKeyframe.time)}
+            </span>
+            <label>
+              Easing
+              <select
+                value={editingKeyframeEasing}
+                onChange={(e) => handleChangeEditingEasing(e.target.value as Easing)}
+              >
+                {EASINGS.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" onClick={handleDeleteEditingKeyframe} title="Delete this keyframe">
+              Delete
+            </button>
+            <button type="button" onClick={() => setEditingKeyframe(null)} title="Close">
+              ×
+            </button>
+          </div>
+        )}
+
         {selectedPathId ? (
           <div className="Timeline-tracks">
             {PROPERTY_DEFS.map((def) => {
@@ -300,12 +404,13 @@ function Timeline() {
                         key={kf.time}
                         className="Timeline-keyframe"
                         style={{ left: `${(kf.time / animation.durationMs) * 100}%` }}
-                        onMouseDown={handleKeyframeMouseDown(def.property, kf.time)}
+                        onMouseDown={handleKeyframeMouseDown(def.property, kf.time, def.label)}
                         onDoubleClick={(e) => {
                           e.stopPropagation()
+                          cancelPendingEditor()
                           removeKeyframe(selectedPathId, def.property, kf.time)
                         }}
-                        title={`${def.label} ${kf.value.toFixed(2)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
+                        title={`${def.label} ${kf.value.toFixed(2)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
                       />
                     ))}
                   </div>
@@ -355,9 +460,10 @@ function Timeline() {
                         onMouseDown={handleColorKeyframeMouseDown(def, kf.time)}
                         onDoubleClick={(e) => {
                           e.stopPropagation()
+                          cancelPendingEditor()
                           handleRemoveColorKeyframe(def, kf.time)
                         }}
-                        title={`${def.label} ${colorAtTime(def, kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — double-click to delete`}
+                        title={`${def.label} ${colorAtTime(def, kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
                       />
                     ))}
                   </div>

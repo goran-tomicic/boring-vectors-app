@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { importSampleShape } from './helpers.js'
+import { importSampleShape, readPositionProps, pathPointToScreen } from './helpers.js'
 
 // PropsPanel always renders — it shows "Artboard" when nothing is selected, "Position" etc.
 // when a path is. The Position section's W/H inputs are disabled (read-only); X/Y are the
@@ -33,6 +33,44 @@ test.describe('drawing tools', () => {
 
     const after = Number(await xInput.inputValue())
     expect(Math.abs(after - before)).toBeGreaterThan(20)
+  })
+
+  test('select tool shows resize handles that resize from the opposite corner', async ({ page }) => {
+    const before = await readPositionProps(page)
+    const brHandle = await pathPointToScreen(page, before.x + before.w, before.y + before.h)
+
+    await page.mouse.move(brHandle.x, brHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(brHandle.x + 50, brHandle.y + 50, { steps: 5 })
+    await page.mouse.up()
+
+    const after = await readPositionProps(page)
+    // Dragging the bottom-right handle out should grow the shape while the top-left
+    // (opposite corner) stays anchored.
+    expect(after.w).toBeGreaterThan(before.w)
+    expect(after.h).toBeGreaterThan(before.h)
+    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2)
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(2)
+  })
+
+  test('select tool shows a rotate handle that rotates the selected shape', async ({ page }) => {
+    const before = await readPositionProps(page)
+    const topCenter = await pathPointToScreen(page, before.x + before.w / 2, before.y)
+    const rotateHandle = { x: topCenter.x, y: topCenter.y - 22 }
+
+    await page.mouse.move(rotateHandle.x, rotateHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(rotateHandle.x + 90, rotateHandle.y + 20, { steps: 8 })
+    await page.mouse.up()
+
+    const after = await readPositionProps(page)
+    // Rotating changes the axis-aligned bounding box — some combination of its edges moves.
+    const changed =
+      Math.abs(after.x - before.x) > 1 ||
+      Math.abs(after.y - before.y) > 1 ||
+      Math.abs(after.w - before.w) > 1 ||
+      Math.abs(after.h - before.h) > 1
+    expect(changed).toBe(true)
   })
 
   test('node tool switches without error and keeps the selection', async ({ page }) => {

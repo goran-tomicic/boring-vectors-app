@@ -8,11 +8,18 @@ const ACCENT = '#aa3bff'
 const OVERLAY_LINE = 'rgba(170, 59, 255, 0.6)'
 const ANCHOR_FILL = '#1c1d24'
 const HANDLE_FILL = '#1c1d24'
+const RESIZE_HANDLE_SIZE = 7
+const ROTATE_HANDLE_RADIUS = 5
+const ROTATE_HANDLE_OFFSET = 22
+
+export type ResizeCorner = 'tl' | 'tr' | 'bl' | 'br' | 't' | 'b' | 'l' | 'r'
 
 export type OverlayHit =
   | { type: 'anchor'; segmentIndex: number }
   | { type: 'handleIn'; segmentIndex: number }
   | { type: 'handleOut'; segmentIndex: number }
+  | { type: 'resize'; corner: ResizeCorner }
+  | { type: 'rotate' }
 
 export function hitTestOverlay(
   overlayLayer: paper.Layer,
@@ -44,6 +51,50 @@ export function drawSelectionHighlight(overlayLayer: paper.Layer, path: paper.Pa
     dashArray: [4 / zoom, 3 / zoom],
     parent: overlayLayer,
   })
+}
+
+/** Resize (8 handles around the bounds) + rotate (one handle above top-center) overlay for the Select tool's single-selection case — lets the user resize/rotate without switching to a dedicated tool. */
+export function drawTransformHandles(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
+  const bounds = path.bounds
+  const size = RESIZE_HANDLE_SIZE / zoom
+  const corners: { corner: ResizeCorner; point: paper.Point }[] = [
+    { corner: 'tl', point: bounds.topLeft },
+    { corner: 'tr', point: bounds.topRight },
+    { corner: 'bl', point: bounds.bottomLeft },
+    { corner: 'br', point: bounds.bottomRight },
+    { corner: 't', point: bounds.topCenter },
+    { corner: 'b', point: bounds.bottomCenter },
+    { corner: 'l', point: bounds.leftCenter },
+    { corner: 'r', point: bounds.rightCenter },
+  ]
+  for (const { corner, point } of corners) {
+    const handle = new paper.Path.Rectangle({
+      rectangle: new paper.Rectangle(point.subtract(size / 2), new paper.Size(size, size)),
+      fillColor: ANCHOR_FILL,
+      strokeColor: ACCENT,
+      strokeWidth: 1.5 / zoom,
+      parent: overlayLayer,
+    })
+    handle.data = { type: 'resize', corner } satisfies OverlayHit
+  }
+
+  const rotateAnchor = bounds.topCenter.subtract(new paper.Point(0, ROTATE_HANDLE_OFFSET / zoom))
+  new paper.Path.Line({
+    from: bounds.topCenter,
+    to: rotateAnchor,
+    strokeColor: OVERLAY_LINE,
+    strokeWidth: 1 / zoom,
+    parent: overlayLayer,
+  })
+  const rotateHandle = new paper.Path.Circle({
+    center: rotateAnchor,
+    radius: ROTATE_HANDLE_RADIUS / zoom,
+    fillColor: HANDLE_FILL,
+    strokeColor: ACCENT,
+    strokeWidth: 1.5 / zoom,
+    parent: overlayLayer,
+  })
+  rotateHandle.data = { type: 'rotate' } satisfies OverlayHit
 }
 
 export function drawNodeOverlay(
