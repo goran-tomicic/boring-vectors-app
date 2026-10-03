@@ -97,11 +97,39 @@ export function drawTransformHandles(overlayLayer: paper.Layer, path: paper.Path
   rotateHandle.data = { type: 'rotate' } satisfies OverlayHit
 }
 
+/**
+ * Draws node anchors (and, when `showHandles`, each node's in/out bezier handles). The Select
+ * tool uses `showHandles: false` to show anchors — so a node can be clicked straight from
+ * Select without first switching to the Node tool — without the handle-line clutter that's
+ * only useful once a specific node is actively being edited.
+ */
+/** A small floating label near the cursor during a resize/rotate drag (e.g. "42°", "120×80") — the on-canvas feedback a user needs to see the value they're dragging to, since neither gesture has any other live readout while in progress. */
+export function drawTransformLabel(overlayLayer: paper.Layer, anchor: paper.Point, text: string, zoom: number) {
+  const point = anchor.add(new paper.Point(14 / zoom, -14 / zoom))
+  const label = new paper.PointText({
+    point,
+    content: text,
+    fillColor: '#ffffff',
+    fontSize: 12 / zoom,
+    fontWeight: 'bold',
+    parent: overlayLayer,
+  })
+  const padding = 4 / zoom
+  const background = new paper.Path.Rectangle({
+    rectangle: label.bounds.expand(padding * 2),
+    radius: 3 / zoom,
+    fillColor: ACCENT,
+    parent: overlayLayer,
+  })
+  background.insertBelow(label)
+}
+
 export function drawNodeOverlay(
   overlayLayer: paper.Layer,
   path: paper.Path,
   zoom: number,
   selectedSegmentIndex: number | null,
+  showHandles = true,
 ) {
   const anchorRadius = ANCHOR_RADIUS / zoom
   const handleRadius = HANDLE_RADIUS / zoom
@@ -109,7 +137,7 @@ export function drawNodeOverlay(
   path.segments.forEach((segment, index) => {
     const isSelected = index === selectedSegmentIndex
 
-    if (!segment.handleIn.isZero()) {
+    if (showHandles && !segment.handleIn.isZero()) {
       const handlePoint = segment.point.add(segment.handleIn)
       new paper.Path.Line({
         from: segment.point,
@@ -129,7 +157,7 @@ export function drawNodeOverlay(
       circle.data = { type: 'handleIn', segmentIndex: index } satisfies OverlayHit
     }
 
-    if (!segment.handleOut.isZero()) {
+    if (showHandles && !segment.handleOut.isZero()) {
       const handlePoint = segment.point.add(segment.handleOut)
       new paper.Path.Line({
         from: segment.point,
