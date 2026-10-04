@@ -82,6 +82,44 @@ describe('withKeyframeRemoved', () => {
     const after = withKeyframeRemoved(clip, 'path1', 'opacity', 500)
     expect(findPropertyTrack(after, 'path1', 'opacity')?.keyframes).toHaveLength(1)
   })
+
+  const segments = [{ point: { x: 0, y: 0 }, handleIn: { x: 0, y: 0 }, handleOut: { x: 0, y: 0 } }]
+  const center = { x: 5, y: 5 }
+
+  it('clears the rest-geometry snapshot once rotation has no keyframes left', () => {
+    let clip = withRestGeometrySet(createEmptyAnimationClip(), 'path1', segments, center)
+    clip = withKeyframeSet(clip, 'path1', 'rotation', 0, 45)
+    expect(hasRestGeometry(clip, 'path1')).toBe(true)
+
+    const after = withKeyframeRemoved(clip, 'path1', 'rotation', 0)
+    expect(hasRestGeometry(after, 'path1')).toBe(false)
+  })
+
+  it('keeps the rest-geometry snapshot while scale still has keyframes, even after rotation is fully removed', () => {
+    let clip = withRestGeometrySet(createEmptyAnimationClip(), 'path1', segments, center)
+    clip = withKeyframeSet(clip, 'path1', 'rotation', 0, 45)
+    clip = withKeyframeSet(clip, 'path1', 'scale', 0, 2)
+
+    const after = withKeyframeRemoved(clip, 'path1', 'rotation', 0)
+    expect(hasRestGeometry(after, 'path1')).toBe(true) // scale still needs it
+    expect(findPropertyTrack(after, 'path1', 'scale')?.keyframes).toHaveLength(1)
+
+    const afterBoth = withKeyframeRemoved(after, 'path1', 'scale', 0)
+    expect(hasRestGeometry(afterBoth, 'path1')).toBe(false)
+  })
+
+  it('clears rest geometry even when an unrelated property keeps the path track alive', () => {
+    // Regression: the path track used to only get pruned (taking restSegments with it) once
+    // ALL of its properties were empty — a surviving unrelated property (e.g. x) kept the
+    // stale rest snapshot attached indefinitely, even after rotation/scale had nothing left.
+    let clip = withRestGeometrySet(createEmptyAnimationClip(), 'path1', segments, center)
+    clip = withKeyframeSet(clip, 'path1', 'rotation', 0, 45)
+    clip = withKeyframeSet(clip, 'path1', 'x', 0, 10)
+
+    const after = withKeyframeRemoved(clip, 'path1', 'rotation', 0)
+    expect(hasRestGeometry(after, 'path1')).toBe(false)
+    expect(findPropertyTrack(after, 'path1', 'x')?.keyframes).toHaveLength(1) // untouched
+  })
 })
 
 describe('withKeyframeMoved', () => {
