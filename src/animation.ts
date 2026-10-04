@@ -81,7 +81,9 @@ export interface PathTrack {
    * Playback resets to this snapshot each frame, then applies the evaluated rotation/scale
    * around restCenter, rather than rotating/scaling incrementally — Paper.js has no separate
    * transform matrix to reset, so incremental application would drift and compound. Absent
-   * for paths that have never had rotation/scale keyframed.
+   * for paths that have never had rotation/scale keyframed, and cleared again by
+   * withKeyframeRemoved once neither property has any keyframes left (so a later node-edit on
+   * the path doesn't get silently overwritten by a stale snapshot nothing needs anymore).
    */
   restSegments?: SegmentSnapshot[]
   restCenter?: { x: number; y: number }
@@ -194,7 +196,15 @@ export function withKeyframeSet(
   return { ...clip, tracks }
 }
 
-/** Returns a new clip with the keyframe nearest `time` (within epsilon) removed, pruning empty tracks. */
+/**
+ * Returns a new clip with the keyframe nearest `time` (within epsilon) removed, pruning
+ * empty property tracks. Also clears the path's rest-geometry snapshot (restSegments/
+ * restCenter) once neither rotation nor scale has any keyframes left — otherwise a stale
+ * snapshot would stick around even though nothing needs it anymore, and a later node-edit on
+ * that path would get silently overwritten by it on the next playhead change (applyGeometryAtTime
+ * in canvasEngine/animationPlayback.ts resets to the rest snapshot every frame whenever one is
+ * present, regardless of whether rotation/scale are still animated).
+ */
 export function withKeyframeRemoved(
   clip: AnimationClip,
   pathId: string,
@@ -204,15 +214,20 @@ export function withKeyframeRemoved(
   const tracks = clip.tracks
     .map((t) => {
       if (t.pathId !== pathId) return t
-      return {
-        ...t,
-        properties: t.properties
-          .map((p) => {
-            if (p.property !== property) return p
-            return { ...p, keyframes: p.keyframes.filter((k) => Math.abs(k.time - time) > KEYFRAME_MERGE_EPSILON_MS) }
-          })
-          .filter((p) => p.keyframes.length > 0),
+      const properties = t.properties
+        .map((p) => {
+          if (p.property !== property) return p
+          return { ...p, keyframes: p.keyframes.filter((k) => Math.abs(k.time - time) > KEYFRAME_MERGE_EPSILON_MS) }
+        })
+        .filter((p) => p.keyframes.length > 0)
+
+      const next: PathTrack = { ...t, properties }
+      const stillNeedsRestGeometry = properties.some((p) => p.property === 'rotation' || p.property === 'scale')
+      if (!stillNeedsRestGeometry) {
+        delete next.restSegments
+        delete next.restCenter
       }
+      return next
     })
     .filter((t) => t.properties.length > 0)
   return { ...clip, tracks }

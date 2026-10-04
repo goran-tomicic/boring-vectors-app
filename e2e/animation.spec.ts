@@ -136,6 +136,53 @@ test.describe('animation', () => {
       await expect(row.locator('.Timeline-keyframe')).toHaveCount(1)
     })
 
+    test('deleting all of a path\'s rotation keyframes prunes its rest geometry, so a later node-edit sticks', async ({
+      page,
+    }) => {
+      // Regression: a path's rest-geometry snapshot (captured once, the first time
+      // rotation/scale is keyframed — see PathTrack.restSegments in animation.ts) used to
+      // only get cleared when the path's ENTIRE keyframe track was removed. If an unrelated
+      // property (here, X) was also keyframed, deleting just the rotation keyframes left a
+      // stale snapshot behind — and the next playhead change would silently reset any
+      // subsequent node-edit back to that stale shape.
+
+      // Key X too — keeps the path's track alive after rotation's own keyframe is deleted.
+      const { row: xRow } = await timelineTrackBox(page, 1) // X
+      await xRow.locator('button', { hasText: 'Key' }).click()
+      await expect(xRow.locator('.Timeline-keyframe')).toHaveCount(1)
+
+      // Key rotation at t=0 with value 0 (identity) — captures rest geometry without
+      // visually rotating the shape, so screen coordinates stay valid for the node-drag below.
+      const { row } = await timelineTrackBox(page, 5) // Rotation
+      await row.locator('button', { hasText: 'Key' }).click()
+      await expect(row.locator('.Timeline-keyframe')).toHaveCount(1)
+
+      // Delete only the rotation keyframe — X survives, so the path track itself isn't removed.
+      await row.locator('.Timeline-keyframe').dblclick()
+      await expect(row.locator('.Timeline-keyframe')).toHaveCount(0)
+
+      // Switch to Node tool and drag a node to reshape the star.
+      await shrinkTimeline(page)
+      await page.keyboard.press('n')
+      const before = await readPositionProps(page)
+      const nodePoint = await pathPointToScreen(page, before.x + before.w / 2, before.y)
+      await page.mouse.move(nodePoint.x, nodePoint.y)
+      await page.mouse.down()
+      await page.mouse.move(nodePoint.x + 40, nodePoint.y + 10, { steps: 8 })
+      await page.mouse.up()
+      await growTimeline(page)
+
+      const nodeXInput = page.locator('.PropsPanel-row').nth(2).locator('input').first()
+      const nodeXAfterEdit = await nodeXInput.inputValue()
+
+      // Scrub the playhead away and back — a stale rest snapshot would silently reset this.
+      const { box: trackBox } = await timelineTrackBox(page, 0)
+      await page.mouse.click(trackBox.x + trackBox.width - 5, trackBox.y + trackBox.height / 2)
+      await page.mouse.click(trackBox.x + 5, trackBox.y + trackBox.height / 2)
+
+      expect(await nodeXInput.inputValue()).toBe(nodeXAfterEdit)
+    })
+
     test('clicking a keyframe opens an easing editor; double-click still deletes', async ({ page }) => {
       const { row } = await timelineTrackBox(page, 1) // X
       await row.locator('button', { hasText: 'Key' }).click()
