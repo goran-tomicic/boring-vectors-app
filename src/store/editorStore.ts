@@ -12,6 +12,7 @@ import {
   withKeyframeAutoInserted,
   withRestGeometrySet,
 } from '../animation'
+import type { LayerEntry } from '../canvasEngine/layers'
 
 export type Tool = 'select' | 'node' | 'addPoint' | 'ruler' | 'pen' | 'rectangle' | 'ellipse'
 export type Theme = 'dark' | 'light'
@@ -156,6 +157,13 @@ export interface EditorState {
   requestNewProject: (name: string) => void
   propsPanelVisible: boolean
   togglePropsPanel: () => void
+
+  // --- Layers panel ---
+  /** Read-only; written by PaperCanvas only, rebuilt whenever the content layer's paths change (import, delete, draw/shape tool finish, undo/redo, project load/switch). */
+  layers: LayerEntry[]
+  setLayers: (layers: LayerEntry[]) => void
+  layersPanelVisible: boolean
+  toggleLayersPanel: () => void
 
   // --- Animation (docs/ROADMAP.md step 3) ---
   /** Keyframe timeline data for the current project — see the "Amendment" note on the architectural rule in CLAUDE.md. */
@@ -307,6 +315,11 @@ export const useEditorStore = create<EditorState>((set) => ({
     })),
   propsPanelVisible: true,
   togglePropsPanel: () => set((state) => ({ propsPanelVisible: !state.propsPanelVisible })),
+
+  layers: [],
+  setLayers: (layers) => set({ layers }),
+  layersPanelVisible: true,
+  toggleLayersPanel: () => set((state) => ({ layersPanelVisible: !state.layersPanelVisible })),
 
   animation: createEmptyAnimationClip(),
   setAnimationClip: (clip) => set({ animation: clip }),

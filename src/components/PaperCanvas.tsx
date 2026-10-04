@@ -11,6 +11,7 @@ import {
   computeSelectedPathProps,
 } from '../canvasEngine/overlay'
 import { importSvgIntoContent } from '../canvasEngine/svgIO'
+import { computeLayerList } from '../canvasEngine/layers'
 import {
   type ToolContext,
   createSelectTool,
@@ -116,6 +117,11 @@ function PaperCanvas() {
     storeRef.current.setPlayhead(0)
     applyAnimationAtTime(contentLayer, storeRef.current.animation, 0)
 
+    // Layers panel data — read-only, rebuilt whenever the content layer's paths change
+    // (see call sites below: initial load, commitHistory, undo/redo, project load/switch).
+    const refreshLayers = () => storeRef.current.setLayers(computeLayerList(contentLayer))
+    refreshLayers()
+
     const buildCurrentPayload = (): ProjectPayload => ({
       svg: contentLayer.exportSVG({ asString: true }) as string,
       canvasWidth: storeRef.current.canvas.width,
@@ -149,6 +155,7 @@ function PaperCanvas() {
         importSvgIntoContent(contentLayer, svg, storeRef.current.canvas.width, storeRef.current.canvas.height, false)
       }
       storeRef.current.clearSelection()
+      refreshLayers()
       redrawOverlay()
     }
 
@@ -159,6 +166,7 @@ function PaperCanvas() {
       if (history.length > MAX_HISTORY) history.shift()
       currentSnapshot = snap
       future.length = 0
+      refreshLayers()
     }
 
     const undo = () => {
@@ -248,6 +256,7 @@ function PaperCanvas() {
       history.length = 0
       future.length = 0
       currentSnapshot = snapshotContent()
+      refreshLayers()
       redrawOverlay()
     }
 

@@ -4,6 +4,7 @@ import Rulers from './Rulers'
 import Toolbar from './Toolbar'
 import ZoomPill from './ZoomPill'
 import PanelToggle from './PanelToggle'
+import LayersToggle from './LayersToggle'
 import Timeline from './Timeline'
 import './CanvasWrap.css'
 
@@ -19,6 +20,7 @@ function CanvasWrap() {
       {appMode === 'draw' && <Toolbar />}
       <ZoomPill />
       <PanelToggle />
+      <LayersToggle />
       {/* Docked as an overlay (not a layout sibling) so toggling it never resizes the
           canvas — a resize would re-fit the view and desync the Rulers from it. */}
       {animationEnabled && appMode === 'animate' && <Timeline />}
