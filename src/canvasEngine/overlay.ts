@@ -222,7 +222,7 @@ export function computeSelectedPathProps(
             y: segment.point.y + segment.handleOut.y,
           }
         : null,
-    strokeColor: path.strokeColor ? colorToHex(path.strokeColor) : '#000000',
+    strokeColor: path.strokeColor ? colorToHex(path.strokeColor) : null,
     strokeOpacity: path.strokeColor ? path.strokeColor.alpha : 1,
     strokeWidth: path.strokeWidth,
     fillColor: path.fillColor ? colorToHex(path.fillColor) : null,

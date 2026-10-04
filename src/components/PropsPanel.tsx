@@ -202,7 +202,7 @@ function PropsPanel() {
             onChange={(color) => requestPropsEdit({ kind: 'stroke', color })}
             opacity={props?.strokeOpacity ?? 1}
             onOpacityChange={(opacity) => requestPropsEdit({ kind: 'stroke', opacity })}
-            disabled={disabled}
+            disabled={disabled || !props?.strokeColor}
           />
         </div>
         <div className="PropsPanel-row">
@@ -213,7 +213,7 @@ function PropsPanel() {
             max={50}
             step={0.5}
             value={props ? props.strokeWidth : ''}
-            disabled={disabled}
+            disabled={disabled || !props?.strokeColor}
             onChange={(e) =>
               requestPropsEdit({
                 kind: 'stroke',
@@ -221,6 +221,22 @@ function PropsPanel() {
               })
             }
           />
+        </div>
+        <div className="PropsPanel-row">
+          <label>
+            <input
+              type="checkbox"
+              checked={!!props && props.strokeColor === null}
+              disabled={disabled}
+              onChange={(e) =>
+                requestPropsEdit({
+                  kind: 'stroke',
+                  color: e.target.checked ? null : (props?.strokeColor ?? '#000000'),
+                })
+              }
+            />{' '}
+            No stroke
+          </label>
         </div>
       </section>
 

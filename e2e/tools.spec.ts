@@ -117,4 +117,38 @@ test.describe('drawing tools', () => {
     await expect(positionHeading(page)).toHaveCount(0)
     await expect(page.locator('.PropsPanel-heading', { hasText: 'Artboard' })).toBeVisible()
   })
+
+  test('fill and stroke can each be removed independently, like Figma\'s "no fill"/"no stroke"', async ({
+    page,
+  }) => {
+    // Draw a rectangle (born with both a fill and a stroke) rather than relying on the
+    // sample star, whose fill/stroke state varies by sample.
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 200, box.y + 200, { steps: 5 })
+    await page.mouse.up()
+
+    const noStroke = page.locator('.PropsPanel-row', { hasText: 'No stroke' }).locator('input[type="checkbox"]')
+    const noFill = page.locator('.PropsPanel-row', { hasText: 'No fill' }).locator('input[type="checkbox"]')
+    const strokeWeightInput = page.locator('.PropsPanel-row', { hasText: 'Weight' }).locator('input')
+
+    await expect(noStroke).not.toBeChecked()
+    await expect(noFill).not.toBeChecked()
+    await expect(strokeWeightInput).toBeEnabled()
+
+    await noStroke.check()
+    await expect(noStroke).toBeChecked()
+    await expect(strokeWeightInput).toBeDisabled() // nothing to set a weight on anymore
+
+    await noFill.check()
+    await expect(noFill).toBeChecked()
+
+    // Re-enabling restores a real color rather than staying "no stroke"/"no fill".
+    await noStroke.uncheck()
+    await expect(noStroke).not.toBeChecked()
+    await expect(strokeWeightInput).toBeEnabled()
+  })
 })

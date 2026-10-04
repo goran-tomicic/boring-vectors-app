@@ -441,7 +441,11 @@ function PaperCanvas() {
           }
         }
       } else if (edit.kind === 'stroke') {
-        if (edit.color !== undefined) path.strokeColor = new paper.Color(edit.color)
+        if (edit.color === null) {
+          path.strokeColor = null
+        } else if (edit.color !== undefined) {
+          path.strokeColor = new paper.Color(edit.color)
+        }
         if (edit.opacity !== undefined && path.strokeColor) path.strokeColor.alpha = edit.opacity
         if (edit.width !== undefined) path.strokeWidth = edit.width
       } else if (edit.kind === 'fill') {
