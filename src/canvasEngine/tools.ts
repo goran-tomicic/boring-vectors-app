@@ -1,7 +1,7 @@
 import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
 import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
-import { type OverlayHit, type ResizeCorner, hitTestOverlay, drawTransformLabel } from './overlay'
+import { type OverlayHit, type ResizeCorner, hitTestOverlay, drawTransformLabel, cursorForOverlayHit } from './overlay'
 import { syncKeyframesAfterDirectEdit } from './animationPlayback'
 
 const MIN_RESIZE_SIZE = 2
@@ -108,12 +108,14 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
           transformCenter = activePath.position
           transformStartAngle = event.point.subtract(transformCenter).angle
           transformTotalRotationDeg = 0
+          scope.view.element.style.cursor = cursorForOverlayHit(overlayHit)
           return
         }
         if (overlayHit && overlayHit.type === 'anchor') {
           draggingAnchorPath = activePath
           draggingAnchorIndex = overlayHit.segmentIndex
           storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
+          scope.view.element.style.cursor = 'grabbing'
           redrawOverlay()
           return
         }
@@ -136,6 +138,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
         storeRef.current.setSelection([hitId])
         dragPaths = [hit]
       }
+      scope.view.element.style.cursor = 'move'
     } else if (event.modifiers.shift) {
       marqueeAdditive = true
       marqueeStart = event.point
@@ -145,6 +148,22 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       marqueeStart = event.point
     }
     redrawOverlay()
+  }
+  tool.onMouseMove = (event: paper.ToolEvent) => {
+    const { selectedPathIds } = storeRef.current
+    if (selectedPathIds.length === 1) {
+      const activePath = findPathById(contentLayer, selectedPathIds[0])
+      if (activePath) {
+        const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
+        const overlayCursor = cursorForOverlayHit(overlayHit)
+        if (overlayCursor) {
+          scope.view.element.style.cursor = overlayCursor
+          return
+        }
+      }
+    }
+    const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
+    scope.view.element.style.cursor = hit ? 'move' : ''
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
     if (transformPath && transformHit && transformCenter) {
@@ -215,6 +234,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       transformCenter = null
       transformTotalRotationDeg = 0
       commitHistory()
+      tool.onMouseMove?.(event)
       return
     }
     if (draggingAnchorPath) {
@@ -272,6 +292,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
         if (overlayHit.type === 'anchor') {
           storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
         }
+        scope.view.element.style.cursor = 'grabbing'
         redrawOverlay()
         return
       }
@@ -282,6 +303,18 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     drag = null
     storeRef.current.setSelection(hit ? [hit.name] : [])
     redrawOverlay()
+  }
+  tool.onMouseMove = (event: paper.ToolEvent) => {
+    const { selectedPathIds } = storeRef.current
+    const activePath = selectedPathIds.length === 1 ? findPathById(contentLayer, selectedPathIds[0]) : null
+    const overlayHit = activePath ? hitTestOverlay(overlayLayer, event.point, scope.view.zoom) : null
+    const overlayCursor = cursorForOverlayHit(overlayHit)
+    if (overlayCursor) {
+      scope.view.element.style.cursor = overlayCursor
+      return
+    }
+    const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
+    scope.view.element.style.cursor = hit ? 'pointer' : ''
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
     if (!dragPath || !drag) return
@@ -304,10 +337,12 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     }
     redrawOverlay()
   }
-  tool.onMouseUp = () => {
+  tool.onMouseUp = (event: paper.ToolEvent) => {
     dragPath = null
     drag = null
     commitHistory()
+    scope.view.element.style.cursor = ''
+    tool.onMouseMove?.(event)
   }
   return tool
 }

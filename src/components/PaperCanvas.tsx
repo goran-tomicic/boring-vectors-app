@@ -586,6 +586,9 @@ function PaperCanvas() {
           pen.finish(false)
         }
         tools[state.tool].activate()
+        // A handle-specific cursor (resize/rotate/pointer) set by the previous tool would
+        // otherwise stick around until the next mousemove on the new tool.
+        canvas.style.cursor = ''
       }
       if (
         state.selectedPathIds !== prevState.selectedPathIds ||

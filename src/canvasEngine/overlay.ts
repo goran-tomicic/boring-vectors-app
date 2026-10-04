@@ -43,6 +43,48 @@ export function clearOverlay(overlayLayer: paper.Layer) {
   overlayLayer.removeChildren()
 }
 
+// A thick white halo behind a thinner black stroke keeps the rotate cursor visible over any
+// canvas/artboard background color, light or dark — standard native-cursor styling, since the
+// CSS cursor keyword set has no built-in "rotate" icon to fall back on.
+const ROTATE_CURSOR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">' +
+  '<g fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M16.5 11a5.5 5.5 0 1 1-1.6-3.9"/><path d="M15 3.5v4h-4"/>' +
+  '</g>' +
+  '<g fill="none" stroke="black" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M16.5 11a5.5 5.5 0 1 1-1.6-3.9"/><path d="M15 3.5v4h-4"/>' +
+  '</g>' +
+  '</svg>'
+export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(ROTATE_CURSOR_SVG)}") 11 11, grab`
+
+const RESIZE_CURSOR_BY_CORNER: Record<ResizeCorner, string> = {
+  tl: 'nwse-resize',
+  br: 'nwse-resize',
+  tr: 'nesw-resize',
+  bl: 'nesw-resize',
+  t: 'ns-resize',
+  b: 'ns-resize',
+  l: 'ew-resize',
+  r: 'ew-resize',
+}
+
+/** The CSS cursor to show while hovering (not dragging) a given overlay hit — '' means "no opinion, let the caller fall back to its default." */
+export function cursorForOverlayHit(hit: OverlayHit | null): string {
+  if (!hit) return ''
+  switch (hit.type) {
+    case 'resize':
+      return RESIZE_CURSOR_BY_CORNER[hit.corner]
+    case 'rotate':
+      return ROTATE_CURSOR
+    case 'anchor':
+    case 'handleIn':
+    case 'handleOut':
+      return 'pointer'
+    default:
+      return ''
+  }
+}
+
 export function drawSelectionHighlight(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
   new paper.Path.Rectangle({
     rectangle: path.bounds,
