@@ -35,6 +35,8 @@
   padding: 7px 12px;
   font-size: 13px;
   color: var(--bv-text-dim);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: 0;
 }
 
