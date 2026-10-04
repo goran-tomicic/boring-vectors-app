@@ -73,6 +73,33 @@ test.describe('drawing tools', () => {
     expect(changed).toBe(true)
   })
 
+  test('canvas cursor reflects what hovering will do (resize/rotate/move), not just a plain arrow', async ({
+    page,
+  }) => {
+    const canvasCursor = async () =>
+      page.evaluate(() => (document.getElementById('paper-view-0') as HTMLCanvasElement).style.cursor)
+
+    const props = await readPositionProps(page)
+    const topLeft = await pathPointToScreen(page, props.x, props.y)
+    const topCenter = await pathPointToScreen(page, props.x + props.w / 2, props.y)
+    const center = await pathPointToScreen(page, props.x + props.w / 2, props.y + props.h / 2)
+
+    await page.mouse.move(topLeft.x, topLeft.y)
+    expect(await canvasCursor()).toBe('nwse-resize') // corner resize handle
+
+    await page.mouse.move(topCenter.x, topCenter.y)
+    expect(await canvasCursor()).toBe('ns-resize') // edge resize handle
+
+    await page.mouse.move(topCenter.x, topCenter.y - 22)
+    expect(await canvasCursor()).toContain('grab') // rotate handle (custom cursor, 'grab' fallback)
+
+    await page.mouse.move(center.x, center.y)
+    expect(await canvasCursor()).toBe('move') // shape body — draggable
+
+    await page.mouse.move(topLeft.x - 200, topLeft.y - 200)
+    expect(await canvasCursor()).toBe('') // empty canvas — default
+  })
+
   test('select tool shows node anchors; dragging one switches to the Node tool', async ({ page }) => {
     // Sample star (sampleShapes.ts) viewBox is 0..100: M50 5 L61 35 L95 35 L68 55 L79 90
     // L50 70 L21 90 L32 55 L5 35 L39 35 Z. Vertex (50,70) is a concave inner point, well
