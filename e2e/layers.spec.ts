@@ -80,4 +80,58 @@ test.describe('layers panel', () => {
     await page.click('.LayersToggle-btn')
     await expect(page.locator('.LayersPanel')).toBeVisible()
   })
+
+  test('layers and properties panels can be resized horizontally, down to a 160px minimum', async ({ page }) => {
+    await importSampleShape(page)
+
+    const layersBox = (await page.locator('.LayersPanel').boundingBox())!
+    const layersHandle = (await page.locator('.LayersPanel-resizeHandle').boundingBox())!
+    await page.mouse.move(layersHandle.x + layersHandle.width / 2, layersHandle.y + layersHandle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(layersHandle.x + 120, layersHandle.y + layersHandle.height / 2, { steps: 5 })
+    await page.mouse.up()
+    expect((await page.locator('.LayersPanel').boundingBox())!.width).toBeGreaterThan(layersBox.width + 50)
+
+    // Dragging far past the minimum clamps to 160px rather than collapsing further.
+    const shrunkHandle = (await page.locator('.LayersPanel-resizeHandle').boundingBox())!
+    await page.mouse.move(shrunkHandle.x + shrunkHandle.width / 2, shrunkHandle.y + shrunkHandle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(shrunkHandle.x - 500, shrunkHandle.y + shrunkHandle.height / 2, { steps: 5 })
+    await page.mouse.up()
+    expect((await page.locator('.LayersPanel').boundingBox())!.width).toBe(160)
+
+    const propsBox = (await page.locator('.PropsPanel').boundingBox())!
+    const propsHandle = (await page.locator('.PropsPanel-resizeHandle').boundingBox())!
+    await page.mouse.move(propsHandle.x + propsHandle.width / 2, propsHandle.y + propsHandle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(propsHandle.x - 100, propsHandle.y + propsHandle.height / 2, { steps: 5 })
+    await page.mouse.up()
+    expect((await page.locator('.PropsPanel').boundingBox())!.width).toBeGreaterThan(propsBox.width + 50)
+  })
+
+  test('a layer can be renamed, overriding its inferred name until cleared, and persists across reload', async ({
+    page,
+  }) => {
+    await importSampleShape(page)
+    const row = page.locator('.LayersPanel-row', { hasText: 'Shape' })
+
+    await row.dblclick()
+    const input = page.locator('.LayersPanel-rowInput')
+    await expect(input).toBeVisible()
+    await input.fill('My Star')
+    await input.press('Enter')
+    await expect(page.locator('.LayersPanel-row')).toHaveText(['My Star'])
+
+    // Reload to confirm the rename was persisted (autosave debounces 500ms).
+    await page.waitForTimeout(700)
+    await page.reload()
+    await page.waitForSelector('.TopBar-projectName')
+    await expect(page.locator('.LayersPanel-row')).toHaveText(['My Star'])
+
+    // Clearing the name (blank commit) reverts to the inferred name.
+    await page.locator('.LayersPanel-row', { hasText: 'My Star' }).dblclick()
+    await page.locator('.LayersPanel-rowInput').fill('')
+    await page.locator('.LayersPanel-rowInput').press('Enter')
+    await expect(page.locator('.LayersPanel-row')).toHaveText(['Shape'])
+  })
 })

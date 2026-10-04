@@ -14,6 +14,8 @@ export interface ProjectPayload {
   backgroundOpacity?: number
   /** Keyframe timeline data (docs/ROADMAP.md step 3) — absent on projects saved before animation existed. */
   animation?: AnimationClip
+  /** User-given layer names, keyed by path id — absent on projects saved before layer renaming existed. */
+  layerNames?: Record<string, string>
 }
 
 export const DEFAULT_BACKGROUND_COLOR = '#1f2028'

@@ -159,11 +159,16 @@ export interface EditorState {
   togglePropsPanel: () => void
 
   // --- Layers panel ---
-  /** Read-only; written by PaperCanvas only, rebuilt whenever the content layer's paths change (import, delete, draw/shape tool finish, undo/redo, project load/switch). */
+  /** Read-only; written by PaperCanvas only, rebuilt whenever the content layer's paths change (import, delete, draw/shape tool finish, undo/redo, project load/switch) or layerNameOverrides changes. */
   layers: LayerEntry[]
   setLayers: (layers: LayerEntry[]) => void
   layersPanelVisible: boolean
   toggleLayersPanel: () => void
+  /** User-given layer names, keyed by path id — a path without an entry here falls back to its inferred name (see canvasEngine/layers.ts). Persisted in the project file; written by PaperCanvas only on load/switch, and by the panel's rename UI via renameLayer. */
+  layerNameOverrides: Record<string, string>
+  setLayerNameOverrides: (overrides: Record<string, string>) => void
+  /** Sets a custom name for a layer, or clears it (reverting to the inferred name) when `name` is blank. */
+  renameLayer: (id: string, name: string) => void
 
   // --- Animation (docs/ROADMAP.md step 3) ---
   /** Keyframe timeline data for the current project — see the "Amendment" note on the architectural rule in CLAUDE.md. */
@@ -320,6 +325,16 @@ export const useEditorStore = create<EditorState>((set) => ({
   setLayers: (layers) => set({ layers }),
   layersPanelVisible: true,
   toggleLayersPanel: () => set((state) => ({ layersPanelVisible: !state.layersPanelVisible })),
+  layerNameOverrides: {},
+  setLayerNameOverrides: (overrides) => set({ layerNameOverrides: overrides }),
+  renameLayer: (id, name) =>
+    set((state) => {
+      const trimmed = name.trim()
+      const next = { ...state.layerNameOverrides }
+      if (trimmed) next[id] = trimmed
+      else delete next[id]
+      return { layerNameOverrides: next }
+    }),
 
   animation: createEmptyAnimationClip(),
   setAnimationClip: (clip) => set({ animation: clip }),

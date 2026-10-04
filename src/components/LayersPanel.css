@@ -1,6 +1,6 @@
 .LayersPanel {
-  flex: 0 0 var(--bv-panel-w);
-  width: var(--bv-panel-w);
+  position: relative;
+  flex: 0 0 auto;
   background: var(--bv-panel);
   border-right: 1px solid var(--bv-border);
   overflow-y: auto;
@@ -48,4 +48,27 @@
 .LayersPanel-row[aria-pressed='true'] {
   background: var(--bv-accent-bg);
   color: var(--bv-accent-text);
+}
+
+.LayersPanel-rowInput {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--bv-text);
+  background: var(--bv-panel-raised);
+  border: 1px solid var(--bv-accent-border);
+  border-radius: 4px;
+  padding: 6px 7px;
+}
+
+.LayersPanel-resizeHandle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 1;
 }
