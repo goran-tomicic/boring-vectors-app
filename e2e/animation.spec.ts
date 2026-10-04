@@ -180,5 +180,49 @@ test.describe('animation', () => {
       await expect(diamond).toHaveCount(1)
       await expect(diamond).not.toHaveAttribute('title', /Rotation 0\.00/)
     })
+
+    test('Timeline groups property rows per shape — only the selected one is expanded', async ({ page }) => {
+      // The Timeline overlays most of the canvas at its default height — shrink it first so
+      // the rectangle drawn below actually lands on the canvas, not the Timeline panel.
+      await shrinkTimeline(page)
+
+      // A second shape alongside the sample star from beforeEach.
+      const canvas = page.locator('.CanvasWrap-canvas')
+      const box = (await canvas.boundingBox())!
+      await page.keyboard.press('m') // rectangle tool
+      await page.mouse.move(box.x + 100, box.y + 100)
+      await page.mouse.down()
+      await page.mouse.move(box.x + 160, box.y + 150, { steps: 5 })
+      await page.mouse.up()
+      await page.keyboard.press('v')
+      await growTimeline(page)
+
+      const starHeader = page.locator('.Timeline-groupHeader', { hasText: 'Shape' })
+      const rectHeader = page.locator('.Timeline-groupHeader', { hasText: 'Rectangle' })
+      await expect(starHeader).toHaveCount(1)
+      await expect(rectHeader).toHaveCount(1)
+
+      // The rectangle (just drawn) is selected — its group is expanded, the star's isn't.
+      await expect(rectHeader).toHaveAttribute('aria-pressed', 'true')
+      await expect(starHeader).toHaveAttribute('aria-pressed', 'false')
+      await expect(page.locator('.Timeline-tracks')).toHaveCount(1)
+
+      // Key a property on the rectangle — its header should now show the "has keyframes" dot.
+      const opacityRow = page.locator('.Timeline-row').first()
+      await opacityRow.locator('button', { hasText: 'Key' }).click()
+      await expect(rectHeader.locator('.Timeline-groupDot')).toHaveCount(1)
+      await expect(starHeader.locator('.Timeline-groupDot')).toHaveCount(0)
+
+      // Switching groups by clicking the star's header selects it on canvas too (and
+      // collapses the rectangle's group, expanding the star's instead).
+      await starHeader.click()
+      await expect(starHeader).toHaveAttribute('aria-pressed', 'true')
+      await expect(rectHeader).toHaveAttribute('aria-pressed', 'false')
+      await expect(page.locator('.Timeline-tracks')).toHaveCount(1)
+      await expect(page.locator('.PropsPanel-heading', { hasText: 'Position' })).toBeVisible()
+
+      // The rectangle's keyframe dot persists even while collapsed/not selected.
+      await expect(rectHeader.locator('.Timeline-groupDot')).toHaveCount(1)
+    })
   })
 })

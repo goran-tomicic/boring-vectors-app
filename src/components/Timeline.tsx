@@ -83,6 +83,8 @@ function Timeline() {
   const requestSetTransformKeyframe = useEditorStore((s) => s.requestSetTransformKeyframe)
   const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
   const selectedPathProps = useEditorStore((s) => s.selectedPathProps)
+  const layers = useEditorStore((s) => s.layers)
+  const setSelection = useEditorStore((s) => s.setSelection)
 
   const draggingKeyframe = useRef<{ property: AnimatableProperty; time: number } | null>(null)
   // A plain click schedules the easing editor to open after this delay instead of opening it
@@ -302,6 +304,11 @@ function Timeline() {
     }
   }
 
+  // Drives the Layers-panel-style grouping below: a dot on a collapsed group's header hints
+  // that shape already has keyframes, without needing to select it to find out.
+  const hasKeyframes = (pathId: string) =>
+    (animation.tracks.find((t) => t.pathId === pathId)?.properties ?? []).some((p) => p.keyframes.length > 0)
+
   return (
     <div className="Timeline" style={{ height }}>
       <div className="Timeline-resizeHandle" onPointerDown={handleResizeStart} title="Drag to resize" />
@@ -370,109 +377,135 @@ function Timeline() {
           </div>
         )}
 
-        {selectedPathId ? (
-          <div className="Timeline-tracks">
-            {PROPERTY_DEFS.map((def) => {
-              const track = findPropertyTrack(animation, selectedPathId, def.property)
-              const value =
-                valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
+        {layers.length === 0 ? (
+          <div className="Timeline-hint">No shapes yet.</div>
+        ) : (
+          <div className="Timeline-groups">
+            {layers.map((layer) => {
+              const isActive = layer.id === selectedPathId
               return (
-                <div key={def.property} className="Timeline-row">
-                  <div className="Timeline-rowHead">
-                    <span className="Timeline-rowLabel">{def.label}</span>
-                    <input
-                      type="number"
-                      min={def.min}
-                      max={def.max}
-                      step={def.step}
-                      value={value}
-                      onChange={(e) =>
-                        setValueOverrides((prev) => ({ ...prev, [def.property]: Number(e.target.value) }))
-                      }
-                    />
-                    <button type="button" onClick={() => handleAddKeyframe(def)} title={`Set ${def.label} keyframe`}>
-                      Key
-                    </button>
-                  </div>
-                  <div className="Timeline-track" onMouseDown={handleScrub}>
-                    <div
-                      className="Timeline-playhead"
-                      style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
-                    />
-                    {track?.keyframes.map((kf) => (
-                      <div
-                        key={kf.time}
-                        className="Timeline-keyframe"
-                        style={{ left: `${(kf.time / animation.durationMs) * 100}%` }}
-                        onMouseDown={handleKeyframeMouseDown(def.property, kf.time, def.label)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation()
-                          cancelPendingEditor()
-                          removeKeyframe(selectedPathId, def.property, kf.time)
-                        }}
-                        title={`${def.label} ${kf.value.toFixed(2)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
+                <div key={layer.id} className="Timeline-group">
+                  <button
+                    type="button"
+                    className="Timeline-groupHeader"
+                    aria-pressed={isActive}
+                    onClick={() => setSelection([layer.id])}
+                  >
+                    <span className="Timeline-groupName">{layer.name}</span>
+                    {hasKeyframes(layer.id) && (
+                      <span className="Timeline-groupDot" title="This shape has keyframes" />
+                    )}
+                  </button>
+                  {isActive && (
+                    <div className="Timeline-tracks">
+                      {PROPERTY_DEFS.map((def) => {
+                        const track = findPropertyTrack(animation, layer.id, def.property)
+                        const value =
+                          valueOverrides[def.property] ?? (selectedPathProps ? def.getLive(selectedPathProps) : 0)
+                        return (
+                          <div key={def.property} className="Timeline-row">
+                            <div className="Timeline-rowHead">
+                              <span className="Timeline-rowLabel">{def.label}</span>
+                              <input
+                                type="number"
+                                min={def.min}
+                                max={def.max}
+                                step={def.step}
+                                value={value}
+                                onChange={(e) =>
+                                  setValueOverrides((prev) => ({ ...prev, [def.property]: Number(e.target.value) }))
+                                }
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleAddKeyframe(def)}
+                                title={`Set ${def.label} keyframe`}
+                              >
+                                Key
+                              </button>
+                            </div>
+                            <div className="Timeline-track" onMouseDown={handleScrub}>
+                              <div
+                                className="Timeline-playhead"
+                                style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
+                              />
+                              {track?.keyframes.map((kf) => (
+                                <div
+                                  key={kf.time}
+                                  className="Timeline-keyframe"
+                                  style={{ left: `${(kf.time / animation.durationMs) * 100}%` }}
+                                  onMouseDown={handleKeyframeMouseDown(def.property, kf.time, def.label)}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation()
+                                    cancelPendingEditor()
+                                    removeKeyframe(layer.id, def.property, kf.time)
+                                  }}
+                                  title={`${def.label} ${kf.value.toFixed(2)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
 
-            {COLOR_ROW_DEFS.map((def) => {
-              const [primaryChannel] = colorChannels(def.prefix)
-              const track = findPropertyTrack(animation, selectedPathId, primaryChannel)
-              const liveHex = liveColorHex(def)
-              const disabled = selectedPathProps ? def.getLiveHex(selectedPathProps) == null : true
-              return (
-                <div key={def.prefix} className="Timeline-row">
-                  <div className="Timeline-rowHead">
-                    <span className="Timeline-rowLabel">{def.label}</span>
-                    <input
-                      type="color"
-                      value={liveHex}
-                      disabled={disabled}
-                      onChange={(e) =>
-                        setColorOverrides((prev) => ({ ...prev, [def.prefix]: e.target.value }))
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddColorKeyframe(def)}
-                      disabled={disabled}
-                      title={`Set ${def.label} keyframe`}
-                    >
-                      Key
-                    </button>
-                  </div>
-                  <div className="Timeline-track" onMouseDown={handleScrub}>
-                    <div
-                      className="Timeline-playhead"
-                      style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
-                    />
-                    {track?.keyframes.map((kf) => (
-                      <div
-                        key={kf.time}
-                        className="Timeline-keyframe"
-                        style={{
-                          left: `${(kf.time / animation.durationMs) * 100}%`,
-                          background: colorAtTime(def, kf.time),
-                        }}
-                        onMouseDown={handleColorKeyframeMouseDown(def, kf.time)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation()
-                          cancelPendingEditor()
-                          handleRemoveColorKeyframe(def, kf.time)
-                        }}
-                        title={`${def.label} ${colorAtTime(def, kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
-                      />
-                    ))}
-                  </div>
+                      {COLOR_ROW_DEFS.map((def) => {
+                        const [primaryChannel] = colorChannels(def.prefix)
+                        const track = findPropertyTrack(animation, layer.id, primaryChannel)
+                        const liveHex = liveColorHex(def)
+                        const disabled = selectedPathProps ? def.getLiveHex(selectedPathProps) == null : true
+                        return (
+                          <div key={def.prefix} className="Timeline-row">
+                            <div className="Timeline-rowHead">
+                              <span className="Timeline-rowLabel">{def.label}</span>
+                              <input
+                                type="color"
+                                value={liveHex}
+                                disabled={disabled}
+                                onChange={(e) =>
+                                  setColorOverrides((prev) => ({ ...prev, [def.prefix]: e.target.value }))
+                                }
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleAddColorKeyframe(def)}
+                                disabled={disabled}
+                                title={`Set ${def.label} keyframe`}
+                              >
+                                Key
+                              </button>
+                            </div>
+                            <div className="Timeline-track" onMouseDown={handleScrub}>
+                              <div
+                                className="Timeline-playhead"
+                                style={{ left: `${(playheadMs / animation.durationMs) * 100}%` }}
+                              />
+                              {track?.keyframes.map((kf) => (
+                                <div
+                                  key={kf.time}
+                                  className="Timeline-keyframe"
+                                  style={{
+                                    left: `${(kf.time / animation.durationMs) * 100}%`,
+                                    background: colorAtTime(def, kf.time),
+                                  }}
+                                  onMouseDown={handleColorKeyframeMouseDown(def, kf.time)}
+                                  onDoubleClick={(e) => {
+                                    e.stopPropagation()
+                                    cancelPendingEditor()
+                                    handleRemoveColorKeyframe(def, kf.time)
+                                  }}
+                                  title={`${def.label} ${colorAtTime(def, kf.time)} (${kf.easing}) at ${formatMs(kf.time)} — click to edit easing, double-click to delete`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
-        ) : (
-          <div className="Timeline-hint">Select a single path to add keyframes.</div>
         )}
       </div>
     </div>
