@@ -109,6 +109,30 @@ test.describe('layers panel', () => {
     expect((await page.locator('.PropsPanel').boundingBox())!.width).toBeGreaterThan(propsBox.width + 50)
   })
 
+  test('ruler stays in sync with the canvas after a panel-resize drag', async ({ page }) => {
+    // The user reported the ruler "looks a bit broken" after resizing a side panel. Root
+    // cause: a continuous resize drag fired a React width update (and the resulting
+    // canvas-width change Rulers.tsx redraws from) on every raw pointermove — far more
+    // often than the browser delivers ResizeObserver notifications for — which could
+    // transiently desync the ruler. usePanelResize.ts now throttles that update to once
+    // per animation frame. This test pins down the steady-state result — exact
+    // frame-by-frame convergence timing isn't reliably reproducible via synthetic
+    // pointermove events, so it isn't asserted here.
+    await importSampleShape(page)
+
+    const handle = (await page.locator('.LayersPanel-resizeHandle').boundingBox())!
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(handle.x + 200, handle.y + handle.height / 2, { steps: 40 })
+    await page.mouse.up()
+    await page.waitForTimeout(100)
+
+    const canvasBox = (await page.locator('.CanvasWrap-canvas').boundingBox())!
+    const dpr = await page.evaluate(() => window.devicePixelRatio)
+    const rulerBitmapWidth = await page.locator('.Rulers-top').evaluate((el) => (el as HTMLCanvasElement).width)
+    expect(rulerBitmapWidth).toBe(Math.round(canvasBox.width * dpr))
+  })
+
   test('a layer can be renamed, overriding its inferred name until cleared, and persists across reload', async ({
     page,
   }) => {

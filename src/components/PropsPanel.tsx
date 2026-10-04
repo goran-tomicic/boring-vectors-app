@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { MIN_CANVAS_SIZE, MAX_CANVAS_SIZE, clampCanvasSize } from '../canvasSize'
 import ColorPicker from './ColorPicker'
+import { usePanelResize } from './usePanelResize'
 import './PropsPanel.css'
 
 const MIN_PANEL_WIDTH = 160
@@ -22,23 +22,13 @@ function PropsPanel() {
 
   const disabled = !props
 
-  const [width, setWidth] = useState(DEFAULT_PANEL_WIDTH)
-  const handleResizeStart = (e: React.PointerEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = width
-    const handleMove = (moveEvent: PointerEvent) => {
-      // Docked on the right — dragging the left-edge handle left should grow the panel.
-      const next = startWidth + (startX - moveEvent.clientX)
-      setWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, next)))
-    }
-    const handleUp = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-  }
+  // Docked on the right — dragging the left-edge handle left should grow the panel.
+  const { width, handleResizeStart } = usePanelResize(
+    DEFAULT_PANEL_WIDTH,
+    MIN_PANEL_WIDTH,
+    MAX_PANEL_WIDTH,
+    'grow-left',
+  )
   const resizeHandle = (
     <div className="PropsPanel-resizeHandle" onPointerDown={handleResizeStart} title="Drag to resize" />
   )

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
+import { usePanelResize } from './usePanelResize'
 import './LayersPanel.css'
 
 const MIN_PANEL_WIDTH = 160
@@ -12,23 +13,13 @@ function LayersPanel() {
   const setSelection = useEditorStore((s) => s.setSelection)
   const renameLayer = useEditorStore((s) => s.renameLayer)
 
-  const [width, setWidth] = useState(DEFAULT_PANEL_WIDTH)
-  const handleResizeStart = (e: React.PointerEvent) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = width
-    const handleMove = (moveEvent: PointerEvent) => {
-      // Docked on the left — dragging the right-edge handle right should grow the panel.
-      const next = startWidth + (moveEvent.clientX - startX)
-      setWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, next)))
-    }
-    const handleUp = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-    }
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp)
-  }
+  // Docked on the left — dragging the right-edge handle right should grow the panel.
+  const { width, handleResizeStart } = usePanelResize(
+    DEFAULT_PANEL_WIDTH,
+    MIN_PANEL_WIDTH,
+    MAX_PANEL_WIDTH,
+    'grow-right',
+  )
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
