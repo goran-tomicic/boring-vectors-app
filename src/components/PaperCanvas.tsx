@@ -116,10 +116,13 @@ function PaperCanvas() {
     storeRef.current.setAnimationClip(initialDoc.payload.animation ?? createEmptyAnimationClip())
     storeRef.current.setPlayhead(0)
     applyAnimationAtTime(contentLayer, storeRef.current.animation, 0)
+    storeRef.current.setLayerNameOverrides(initialDoc.payload.layerNames ?? {})
 
-    // Layers panel data — read-only, rebuilt whenever the content layer's paths change
-    // (see call sites below: initial load, commitHistory, undo/redo, project load/switch).
-    const refreshLayers = () => storeRef.current.setLayers(computeLayerList(contentLayer))
+    // Layers panel data — read-only, rebuilt whenever the content layer's paths change or
+    // layerNameOverrides changes (see call sites below: initial load, commitHistory,
+    // undo/redo, project load/switch, and the layerNameOverrides subscription further down).
+    const refreshLayers = () =>
+      storeRef.current.setLayers(computeLayerList(contentLayer, storeRef.current.layerNameOverrides))
     refreshLayers()
 
     const buildCurrentPayload = (): ProjectPayload => ({
@@ -129,6 +132,7 @@ function PaperCanvas() {
       backgroundColor: storeRef.current.canvas.backgroundColor,
       backgroundOpacity: storeRef.current.canvas.backgroundOpacity,
       animation: storeRef.current.animation,
+      layerNames: storeRef.current.layerNameOverrides,
     })
 
     let autosaveTimeout: ReturnType<typeof setTimeout> | undefined
@@ -252,6 +256,7 @@ function PaperCanvas() {
       storeRef.current.setAnimationClip(payload.animation ?? createEmptyAnimationClip())
       storeRef.current.setPlayhead(0)
       applyAnimationAtTime(contentLayer, storeRef.current.animation, 0)
+      storeRef.current.setLayerNameOverrides(payload.layerNames ?? {})
       storeRef.current.clearSelection()
       history.length = 0
       future.length = 0
@@ -652,6 +657,12 @@ function PaperCanvas() {
       // Keyframe/duration edits don't touch Paper.js geometry, so redrawOverlay() (the usual
       // autosave trigger) never runs for them — schedule a save directly instead.
       if (state.animation !== prevState.animation) {
+        scheduleAutosave()
+      }
+      // Renaming a layer doesn't touch Paper.js geometry either — same deal as animation
+      // edits above, but also needs the Layers panel's own list rebuilt to show the new name.
+      if (state.layerNameOverrides !== prevState.layerNameOverrides) {
+        refreshLayers()
         scheduleAutosave()
       }
     })

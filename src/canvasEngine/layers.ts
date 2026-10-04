@@ -48,26 +48,46 @@ export interface LayerEntry {
 /**
  * Builds the Layers panel's list: one entry per path, newest/frontmost first (Paper.js layer
  * children are back-to-front, so reversed matches how layer lists conventionally read).
- * Names are the inferred shape kind, with a number suffix only when more than one path shares
- * that kind — "Rectangle" stays bare until a second rectangle exists, then both become
- * "Rectangle 1"/"Rectangle 2".
+ *
+ * A path with a user-given name in `nameOverrides` (keyed by path id) uses that name as-is and
+ * is excluded from the inferred-kind numbering below — renaming a shape takes it out of the
+ * auto-naming pool entirely, so the remaining un-renamed shapes of that kind renumber as if it
+ * were never there (e.g. renaming "Rectangle 2" to "Background" leaves the other one as plain
+ * "Rectangle", not "Rectangle 1").
+ *
+ * Everything else is named by its inferred shape kind, with a number suffix only when more
+ * than one (un-renamed) path shares that kind — "Rectangle" stays bare until a second
+ * rectangle exists, then both become "Rectangle 1"/"Rectangle 2".
  */
-export function computeLayerList(contentLayer: paper.Layer): LayerEntry[] {
+export function computeLayerList(
+  contentLayer: paper.Layer,
+  nameOverrides: Record<string, string> = {},
+): LayerEntry[] {
   const paths = contentLayer.children.filter((child): child is paper.Path => child instanceof paper.Path)
-  const kinds = paths.map(inferShapeKind)
+  const autoNamed = paths.filter((path) => !nameOverrides[path.name])
+  const kinds = autoNamed.map(inferShapeKind)
 
   const totalByKind = new Map<ShapeKind, number>()
   for (const kind of kinds) totalByKind.set(kind, (totalByKind.get(kind) ?? 0) + 1)
 
   const seenByKind = new Map<ShapeKind, number>()
-  const entries: LayerEntry[] = paths.map((path, i) => {
+  const autoNames = new Map<string, string>()
+  autoNamed.forEach((path, i) => {
     const kind = kinds[i]
     const total = totalByKind.get(kind) ?? 1
-    if (total <= 1) return { id: path.name, name: kind }
+    if (total <= 1) {
+      autoNames.set(path.name, kind)
+      return
+    }
     const n = (seenByKind.get(kind) ?? 0) + 1
     seenByKind.set(kind, n)
-    return { id: path.name, name: `${kind} ${n}` }
+    autoNames.set(path.name, `${kind} ${n}`)
   })
+
+  const entries: LayerEntry[] = paths.map((path) => ({
+    id: path.name,
+    name: nameOverrides[path.name] ?? autoNames.get(path.name) ?? 'Shape',
+  }))
 
   return entries.reverse()
 }

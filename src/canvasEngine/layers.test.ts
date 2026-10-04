@@ -77,4 +77,19 @@ describe('computeLayerList', () => {
     new scope.Group({ parent: contentLayer })
     expect(computeLayerList(contentLayer)).toHaveLength(1)
   })
+
+  it('uses a name override as-is instead of the inferred kind', () => {
+    rectangle('r1')
+    expect(computeLayerList(contentLayer, { r1: 'Background' })).toEqual([{ id: 'r1', name: 'Background' }])
+  })
+
+  it('excludes renamed paths from kind numbering, so the rest renumber as if it were never there', () => {
+    rectangle('r1')
+    rectangle('r2')
+    const list = computeLayerList(contentLayer, { r2: 'Background' })
+    expect(list).toEqual([
+      { id: 'r2', name: 'Background' },
+      { id: 'r1', name: 'Rectangle' },
+    ])
+  })
 })
