@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useEditorStore } from '../store/editorStore'
 import { MIN_CANVAS_SIZE, MAX_CANVAS_SIZE, clampCanvasSize } from '../canvasSize'
 import ColorPicker from './ColorPicker'
@@ -11,7 +12,8 @@ const DEFAULT_PANEL_WIDTH = 260
 function PropsPanel() {
   const props = useEditorStore((s) => s.selectedPathProps)
   const requestPropsEdit = useEditorStore((s) => s.requestPropsEdit)
-  const selectedCount = useEditorStore((s) => s.selectedPathIds.length)
+  const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
+  const selectedCount = selectedPathIds.length
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
@@ -21,6 +23,23 @@ function PropsPanel() {
   const setBackgroundOpacity = useEditorStore((s) => s.setBackgroundOpacity)
 
   const disabled = !props
+
+  // "No fill"/"No stroke" have no live Paper.js state to read back for a multi-selection —
+  // selectedPathProps (props) only exists for a single selected path (see PaperCanvas.tsx's
+  // refreshSelectionDisplay). Without this, the checkbox would always render unchecked while
+  // multi-selecting even right after toggling it on, since there's nothing truthy to drive
+  // `checked` from — so it tracks the user's own last click instead, same spirit as
+  // Timeline.tsx's valueOverrides. Reset whenever the selection itself changes, so switching
+  // from one multi-selection to another doesn't carry over a stale checked state.
+  const [multiNoFill, setMultiNoFill] = useState(false)
+  const [multiNoStroke, setMultiNoStroke] = useState(false)
+  const selectionKey = selectedPathIds.join(',')
+  const [lastSelectionKey, setLastSelectionKey] = useState(selectionKey)
+  if (selectionKey !== lastSelectionKey) {
+    setLastSelectionKey(selectionKey)
+    setMultiNoFill(false)
+    setMultiNoStroke(false)
+  }
 
   // Docked on the right — dragging the left-edge handle left should grow the panel.
   const { width, handleResizeStart } = usePanelResize(
@@ -202,7 +221,7 @@ function PropsPanel() {
             onChange={(color) => requestPropsEdit({ kind: 'stroke', color })}
             opacity={props?.strokeOpacity ?? 1}
             onOpacityChange={(opacity) => requestPropsEdit({ kind: 'stroke', opacity })}
-            disabled={disabled || !props?.strokeColor}
+            disabled={!!props && !props.strokeColor}
           />
         </div>
         <div className="PropsPanel-row">
@@ -212,8 +231,8 @@ function PropsPanel() {
             min={0.5}
             max={50}
             step={0.5}
-            value={props ? props.strokeWidth : ''}
-            disabled={disabled || !props?.strokeColor}
+            value={props ? props.strokeWidth : 1}
+            disabled={!!props && !props.strokeColor}
             onChange={(e) =>
               requestPropsEdit({
                 kind: 'stroke',
@@ -226,14 +245,14 @@ function PropsPanel() {
           <label>
             <input
               type="checkbox"
-              checked={!!props && props.strokeColor === null}
-              disabled={disabled}
-              onChange={(e) =>
+              checked={props ? props.strokeColor === null : multiNoStroke}
+              onChange={(e) => {
+                if (!props) setMultiNoStroke(e.target.checked)
                 requestPropsEdit({
                   kind: 'stroke',
                   color: e.target.checked ? null : (props?.strokeColor ?? '#000000'),
                 })
-              }
+              }}
             />{' '}
             No stroke
           </label>
@@ -250,21 +269,21 @@ function PropsPanel() {
             onOpacityChange={(opacity) =>
               requestPropsEdit({ kind: 'fill', color: props?.fillColor ?? '#000000', opacity })
             }
-            disabled={disabled || !props?.fillColor}
+            disabled={!!props && !props.fillColor}
           />
         </div>
         <div className="PropsPanel-row">
           <label>
             <input
               type="checkbox"
-              checked={!!props && props.fillColor === null}
-              disabled={disabled}
-              onChange={(e) =>
+              checked={props ? props.fillColor === null : multiNoFill}
+              onChange={(e) => {
+                if (!props) setMultiNoFill(e.target.checked)
                 requestPropsEdit({
                   kind: 'fill',
                   color: e.target.checked ? null : (props?.fillColor ?? '#000000'),
                 })
-              }
+              }}
             />{' '}
             No fill
           </label>

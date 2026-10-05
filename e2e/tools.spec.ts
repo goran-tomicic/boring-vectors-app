@@ -100,6 +100,22 @@ test.describe('drawing tools', () => {
     expect(await canvasCursor()).toBe('') // empty canvas — default
   })
 
+  test('drawing tools (pen, shapes, ruler, add point) show a crosshair cursor', async ({ page }) => {
+    const canvasCursor = () =>
+      page.evaluate(() => (document.getElementById('paper-view-0') as HTMLCanvasElement).style.cursor)
+
+    for (const key of ['m', 'l', 'p', 'r', '+']) {
+      await page.keyboard.press(key)
+      expect(await canvasCursor()).toBe('crosshair')
+    }
+
+    // Switching back to Select/Node drops the crosshair (those manage their own cursor).
+    await page.keyboard.press('v')
+    expect(await canvasCursor()).toBe('')
+    await page.keyboard.press('n')
+    expect(await canvasCursor()).toBe('')
+  })
+
   test('select tool shows node anchors; dragging one switches to the Node tool', async ({ page }) => {
     // Sample star (sampleShapes.ts) viewBox is 0..100: M50 5 L61 35 L95 35 L68 55 L79 90
     // L50 70 L21 90 L32 55 L5 35 L39 35 Z. Vertex (50,70) is a concave inner point, well
@@ -177,5 +193,46 @@ test.describe('drawing tools', () => {
     await noStroke.uncheck()
     await expect(noStroke).not.toBeChecked()
     await expect(strokeWeightInput).toBeEnabled()
+  })
+
+  test('fill/stroke edits apply to every selected shape at once in a multi-selection', async ({ page }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 160, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 200, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 260, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+    await page.keyboard.press('v')
+
+    const rows = page.locator('.LayersPanel-row')
+    await rows.nth(0).click()
+    await rows.nth(1).click({ modifiers: ['Shift'] })
+    await expect(page.locator('.PropsPanel-info')).toContainText('2 paths selected')
+
+    // Position/node editing stays single-selection-only (disabled), but fill/stroke apply
+    // uniformly across the whole selection.
+    const xInput = page.locator('.PropsPanel-row').nth(1).locator('input').first()
+    await expect(xInput).toBeDisabled()
+    const fillPill = page.locator('.PropsPanel-section', { hasText: 'Fill' }).locator('.ColorPicker-pill')
+    await expect(fillPill).toBeEnabled()
+
+    const noFillCheckbox = page.locator('.PropsPanel-section', { hasText: 'Fill' }).locator('input[type="checkbox"]')
+    await expect(noFillCheckbox).not.toBeChecked()
+    await noFillCheckbox.check()
+    await expect(noFillCheckbox).toBeChecked()
+
+    // Re-select each rectangle individually — both lost their fill, not just one.
+    await rows.nth(0).click()
+    await expect(noFillCheckbox).toBeChecked()
+    await rows.nth(1).click()
+    await expect(noFillCheckbox).toBeChecked()
   })
 })
