@@ -168,6 +168,12 @@ export function createSvgExporter(contentLayer: paper.Layer, storeRef: { current
         workerScript: gifWorkerUrl,
         width: w * scale,
         height: h * scale,
+        // gif.js's own default (0) already loops forever — the point of setting this
+        // explicitly is the -1 case, which makes the exported file match the in-app
+        // Timeline's own "Loop timeline playback" setting when it's off (playback stops
+        // and holds on the last frame, rather than looping, same as createPlaybackController
+        // in animationPlayback.ts).
+        repeat: storeRef.current.settings.loopPlayback ? 0 : -1,
       })
       for (const frame of frames) gif.addFrame(frame, { delay: 1000 / fps })
       gif.on('finished', (blob: Blob) => resolve(blob))
