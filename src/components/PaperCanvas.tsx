@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import paper from 'paper'
-import { useEditorStore, type PropsEdit, type ExportKind } from '../store/editorStore'
+import { useEditorStore, type PropsEdit, type ExportKind, type Tool } from '../store/editorStore'
 import { drawBackground, fitCanvasInView, getViewTransform } from '../canvasEngine/background'
 import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngine/hitTest'
 import {
@@ -54,6 +54,19 @@ const MAX_ZOOM = 10
 const ZOOM_WHEEL_SENSITIVITY = 1.0015
 const AUTOSAVE_DEBOUNCE_MS = 500
 const MAX_HISTORY = 100
+
+// Select/Node manage their own cursor dynamically per-handle (see tools.ts's onMouseMove) —
+// omitted here so the tool-switch effect below doesn't fight that. Every other tool places
+// something at a point rather than manipulating existing geometry, so a plain crosshair
+// (matching every other vector app) is a constant, correct cursor for as long as that tool
+// stays active.
+const CURSOR_BY_TOOL: Partial<Record<Tool, string>> = {
+  pen: 'crosshair',
+  rectangle: 'crosshair',
+  ellipse: 'crosshair',
+  ruler: 'crosshair',
+  addPoint: 'crosshair',
+}
 
 function PaperCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -409,9 +422,43 @@ function PaperCanvas() {
       storeRef.current.setKeyframe(pathId, property, time, value, easing)
     }
 
+    // Stroke/fill edits apply uniformly to every selected path at once, same as Figma — unlike
+    // position/node edits below, there's no per-path geometry to reconcile, so multi-select
+    // doesn't need its own semantics (e.g. "same value for all" vs. "offset each by a delta").
+    const applyColorEdit = (path: paper.Path, edit: Extract<PropsEdit, { kind: 'stroke' | 'fill' }>) => {
+      if (edit.kind === 'stroke') {
+        if (edit.color === null) {
+          path.strokeColor = null
+        } else if (edit.color !== undefined) {
+          path.strokeColor = new paper.Color(edit.color)
+        }
+        if (edit.opacity !== undefined && path.strokeColor) path.strokeColor.alpha = edit.opacity
+        if (edit.width !== undefined) path.strokeWidth = edit.width
+      } else {
+        if (edit.color === null) {
+          path.fillColor = null
+        } else {
+          path.fillColor = new paper.Color(edit.color)
+          if (edit.opacity !== undefined) path.fillColor.alpha = edit.opacity
+        }
+      }
+    }
+
     const applyPropsEdit = (edit: PropsEdit) => {
       const { selectedPathIds, selectedSegmentIndex } = storeRef.current
       if (storeRef.current.isPlaying) return
+      if (selectedPathIds.length === 0) return
+
+      if (edit.kind === 'stroke' || edit.kind === 'fill') {
+        for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
+          applyColorEdit(path, edit)
+          syncKeyframesAfterDirectEdit(path, storeRef)
+        }
+        redrawOverlay()
+        commitHistory()
+        return
+      }
+
       if (selectedPathIds.length !== 1) return
       const path = findPathById(contentLayer, selectedPathIds[0])
       if (!path) return
@@ -439,21 +486,6 @@ function PaperCanvas() {
             segment.handleOut = relative
             segment.handleIn = relative.multiply(-1)
           }
-        }
-      } else if (edit.kind === 'stroke') {
-        if (edit.color === null) {
-          path.strokeColor = null
-        } else if (edit.color !== undefined) {
-          path.strokeColor = new paper.Color(edit.color)
-        }
-        if (edit.opacity !== undefined && path.strokeColor) path.strokeColor.alpha = edit.opacity
-        if (edit.width !== undefined) path.strokeWidth = edit.width
-      } else if (edit.kind === 'fill') {
-        if (edit.color === null) {
-          path.fillColor = null
-        } else {
-          path.fillColor = new paper.Color(edit.color)
-          if (edit.opacity !== undefined) path.fillColor.alpha = edit.opacity
         }
       }
 
@@ -579,6 +611,7 @@ function PaperCanvas() {
     resizeObserver.observe(canvas)
 
     tools[storeRef.current.tool].activate()
+    canvas.style.cursor = CURSOR_BY_TOOL[storeRef.current.tool] ?? ''
     const unsubscribeTool = useEditorStore.subscribe((state, prevState) => {
       if (state.tool !== prevState.tool) {
         if (prevState.tool === 'pen' && pen.isDrawing()) {
@@ -588,7 +621,7 @@ function PaperCanvas() {
         tools[state.tool].activate()
         // A handle-specific cursor (resize/rotate/pointer) set by the previous tool would
         // otherwise stick around until the next mousemove on the new tool.
-        canvas.style.cursor = ''
+        canvas.style.cursor = CURSOR_BY_TOOL[state.tool] ?? ''
       }
       if (
         state.selectedPathIds !== prevState.selectedPathIds ||
