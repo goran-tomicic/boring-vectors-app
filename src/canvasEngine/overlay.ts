@@ -95,6 +95,33 @@ export function drawSelectionHighlight(overlayLayer: paper.Layer, path: paper.Pa
   })
 }
 
+/** The union of every selected path's bounds — what a multi-selection's Position (X/Y) fields read from and translate, since there's no single path to read full properties from. Pure geometry, exported for unit testing. */
+export function computeSelectionBounds(
+  paths: paper.Path[],
+): { x: number; y: number; width: number; height: number } | null {
+  if (paths.length === 0) return null
+  const union = paths.reduce<paper.Rectangle | null>(
+    (acc, p) => (acc ? acc.unite(p.bounds) : p.bounds.clone()),
+    null,
+  )
+  if (!union) return null
+  return { x: union.x, y: union.y, width: union.width, height: union.height }
+}
+
+/** A solid (non-dashed) rectangle around a multi-selection's combined bounds — visually distinct from each shape's own dashed highlight so it reads as "the group," not just another shape outline. */
+export function drawSelectionBoundsHighlight(
+  overlayLayer: paper.Layer,
+  bounds: { x: number; y: number; width: number; height: number },
+  zoom: number,
+) {
+  new paper.Path.Rectangle({
+    rectangle: new paper.Rectangle(bounds.x, bounds.y, bounds.width, bounds.height),
+    strokeColor: ACCENT,
+    strokeWidth: 1.5 / zoom,
+    parent: overlayLayer,
+  })
+}
+
 /** Resize (8 handles around the bounds) + rotate (one handle above top-center) overlay for the Select tool's single-selection case — lets the user resize/rotate without switching to a dedicated tool. */
 export function drawTransformHandles(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
   const bounds = path.bounds

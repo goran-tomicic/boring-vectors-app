@@ -11,9 +11,15 @@ const DEFAULT_PANEL_WIDTH = 260
 
 function PropsPanel() {
   const props = useEditorStore((s) => s.selectedPathProps)
+  const selectionBounds = useEditorStore((s) => s.selectionBounds)
   const requestPropsEdit = useEditorStore((s) => s.requestPropsEdit)
   const selectedPathIds = useEditorStore((s) => s.selectedPathIds)
   const selectedCount = selectedPathIds.length
+  // Position reads from the single path's own props when there's exactly one, or from the
+  // multi-selection's combined bounding box otherwise — W/H there are display-only (per-shape
+  // resize semantics for a multi-selection aren't decided), but X/Y still edits via
+  // requestPropsEdit, moving every selected path by the same delta (see PaperCanvas.tsx).
+  const position = props ?? selectionBounds
   const canvasWidth = useEditorStore((s) => s.canvas.width)
   const canvasHeight = useEditorStore((s) => s.canvas.height)
   const setCanvasSize = useEditorStore((s) => s.setCanvasSize)
@@ -21,8 +27,6 @@ function PropsPanel() {
   const setBackgroundColor = useEditorStore((s) => s.setBackgroundColor)
   const backgroundOpacity = useEditorStore((s) => s.canvas.backgroundOpacity)
   const setBackgroundOpacity = useEditorStore((s) => s.setBackgroundOpacity)
-
-  const disabled = !props
 
   // "No fill"/"No stroke" have no live Paper.js state to read back for a multi-selection —
   // selectedPathProps (props) only exists for a single selected path (see PaperCanvas.tsx's
@@ -97,29 +101,29 @@ function PropsPanel() {
         <h3 className="PropsPanel-heading">Position</h3>
         <div className="PropsPanel-row">
           <label>W</label>
-          <input type="number" value={props ? Math.round(props.width) : ''} disabled readOnly />
+          <input type="number" value={position ? Math.round(position.width) : ''} disabled readOnly />
           <label>H</label>
-          <input type="number" value={props ? Math.round(props.height) : ''} disabled readOnly />
+          <input type="number" value={position ? Math.round(position.height) : ''} disabled readOnly />
         </div>
         <div className="PropsPanel-row">
           <label>X</label>
           <input
             type="number"
-            value={props ? Math.round(props.x) : ''}
-            disabled={disabled}
+            value={position ? Math.round(position.x) : ''}
+            disabled={!position}
             onChange={(e) => {
-              if (!props) return
-              requestPropsEdit({ kind: 'position', x: Number(e.target.value), y: props.y })
+              if (!position) return
+              requestPropsEdit({ kind: 'position', x: Number(e.target.value), y: position.y })
             }}
           />
           <label>Y</label>
           <input
             type="number"
-            value={props ? Math.round(props.y) : ''}
-            disabled={disabled}
+            value={position ? Math.round(position.y) : ''}
+            disabled={!position}
             onChange={(e) => {
-              if (!props) return
-              requestPropsEdit({ kind: 'position', x: props.x, y: Number(e.target.value) })
+              if (!position) return
+              requestPropsEdit({ kind: 'position', x: position.x, y: Number(e.target.value) })
             }}
           />
         </div>

@@ -217,10 +217,10 @@ test.describe('drawing tools', () => {
     await rows.nth(1).click({ modifiers: ['Shift'] })
     await expect(page.locator('.PropsPanel-info')).toContainText('2 paths selected')
 
-    // Position/node editing stays single-selection-only (disabled), but fill/stroke apply
-    // uniformly across the whole selection.
-    const xInput = page.locator('.PropsPanel-row').nth(1).locator('input').first()
-    await expect(xInput).toBeDisabled()
+    // Position editing works across a multi-selection too (see the dedicated position test
+    // below), but node/handle editing has no multi-shape equivalent and stays disabled.
+    const nodeXInput = page.locator('.PropsPanel-row').nth(2).locator('input').first()
+    await expect(nodeXInput).toBeDisabled()
     const fillPill = page.locator('.PropsPanel-section', { hasText: 'Fill' }).locator('.ColorPicker-pill')
     await expect(fillPill).toBeEnabled()
 
@@ -234,5 +234,60 @@ test.describe('drawing tools', () => {
     await expect(noFillCheckbox).toBeChecked()
     await rows.nth(1).click()
     await expect(noFillCheckbox).toBeChecked()
+  })
+
+  test('position edits on a multi-selection move every selected shape by the same delta', async ({ page }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 160, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 300, box.y + 200)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 360, box.y + 250, { steps: 5 })
+    await page.mouse.up()
+    await page.keyboard.press('v')
+
+    const rows = page.locator('.LayersPanel-row')
+
+    await rows.nth(0).click()
+    const firstBefore = await readPositionProps(page)
+    await rows.nth(1).click()
+    const secondBefore = await readPositionProps(page)
+
+    await rows.nth(0).click()
+    await rows.nth(1).click({ modifiers: ['Shift'] })
+    await expect(page.locator('.PropsPanel-info')).toContainText('2 paths selected')
+
+    const combinedBefore = await readPositionProps(page)
+    // W/H stay read-only for a multi-selection (per-shape resize semantics aren't decided) —
+    // only X/Y are editable, the first two enabled inputs in the Position section.
+    const wInput = page.locator('.PropsPanel-row').nth(0).locator('input').first()
+    await expect(wInput).toBeDisabled()
+    const xInput = page.locator('.PropsPanel-row').nth(1).locator('input').first()
+    const yInput = page.locator('.PropsPanel-row').nth(1).locator('input').nth(1)
+    await expect(xInput).toBeEnabled()
+
+    const dx = 50
+    const dy = -20
+    await xInput.fill(String(combinedBefore.x + dx))
+    await yInput.fill(String(combinedBefore.y + dy))
+
+    // Re-select each rectangle individually — both shifted by the same delta, not just one,
+    // and their relative arrangement (the gap between them) is unchanged.
+    await rows.nth(0).click()
+    const firstAfter = await readPositionProps(page)
+    expect(firstAfter.x - firstBefore.x).toBeCloseTo(dx, 0)
+    expect(firstAfter.y - firstBefore.y).toBeCloseTo(dy, 0)
+
+    await rows.nth(1).click()
+    const secondAfter = await readPositionProps(page)
+    expect(secondAfter.x - secondBefore.x).toBeCloseTo(dx, 0)
+    expect(secondAfter.y - secondBefore.y).toBeCloseTo(dy, 0)
   })
 })
