@@ -126,6 +126,15 @@ export interface EditorState {
   /** Read-only; written by PaperCanvas only. */
   selectedPathProps: SelectedPathProps | null
   setSelectedPathProps: (props: SelectedPathProps | null) => void
+  /**
+   * Read-only; written by PaperCanvas only. The combined bounding box of a multi-selection —
+   * selectedPathProps stays null whenever more than one path is selected (there's no single
+   * path to read full properties from), but Position editing still needs *something* to show
+   * and edit. X/Y here means "move every selected path by the same delta"; width/height are
+   * display-only (per-shape resize semantics for a multi-selection aren't decided yet).
+   */
+  selectionBounds: { x: number; y: number; width: number; height: number } | null
+  setSelectionBounds: (bounds: { x: number; y: number; width: number; height: number } | null) => void
   /** Nonce-based signal carrying a PropsPanel edit for PaperCanvas to apply — mirrors deleteRequest/importRequest. */
   propsEditRequest: { edit: PropsEdit; nonce: number } | null
   requestPropsEdit: (edit: PropsEdit) => void
@@ -275,6 +284,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     })),
   selectedPathProps: null,
   setSelectedPathProps: (props) => set({ selectedPathProps: props }),
+  selectionBounds: null,
+  setSelectionBounds: (bounds) => set({ selectionBounds: bounds }),
   propsEditRequest: null,
   requestPropsEdit: (edit) =>
     set((state) => ({

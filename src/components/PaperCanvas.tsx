@@ -6,9 +6,11 @@ import { findPathById, findPathsByIds, isTextInputFocused } from '../canvasEngin
 import {
   clearOverlay,
   drawSelectionHighlight,
+  drawSelectionBoundsHighlight,
   drawNodeOverlay,
   drawTransformHandles,
   computeSelectedPathProps,
+  computeSelectionBounds,
 } from '../canvasEngine/overlay'
 import { importSvgIntoContent } from '../canvasEngine/svgIO'
 import { computeLayerList } from '../canvasEngine/layers'
@@ -216,6 +218,7 @@ function PaperCanvas() {
         const path = findPathById(contentLayer, selectedPathIds[0])
         if (path) {
           storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
+          storeRef.current.setSelectionBounds(null)
           if (tool === 'node') {
             drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
           } else if (tool === 'select') {
@@ -230,8 +233,14 @@ function PaperCanvas() {
       }
 
       storeRef.current.setSelectedPathProps(null)
-      for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
+      const paths = findPathsByIds(contentLayer, selectedPathIds)
+      for (const path of paths) {
         drawSelectionHighlight(overlayLayer, path, zoom)
+      }
+      const bounds = computeSelectionBounds(paths)
+      storeRef.current.setSelectionBounds(bounds)
+      if (bounds && paths.length > 1) {
+        drawSelectionBoundsHighlight(overlayLayer, bounds, zoom)
       }
     }
 
@@ -453,6 +462,25 @@ function PaperCanvas() {
         for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
           applyColorEdit(path, edit)
           syncKeyframesAfterDirectEdit(path, storeRef)
+        }
+        redrawOverlay()
+        commitHistory()
+        return
+      }
+
+      // Position is the one edit kind that still makes sense across a multi-selection: move
+      // every selected path by the same delta, keeping their relative arrangement intact
+      // (same semantics as dragging the group on canvas in tools.ts's createSelectTool).
+      // Node/handle edits have no equivalent — there's no single "the node" across several
+      // different paths — so those stay gated to a single selection below.
+      if (edit.kind === 'position' && selectedPathIds.length > 1) {
+        const paths = findPathsByIds(contentLayer, selectedPathIds)
+        const bounds = computeSelectionBounds(paths)
+        if (!bounds) return
+        const delta = new paper.Point(edit.x - bounds.x, edit.y - bounds.y)
+        for (const p of paths) {
+          p.position = p.position.add(delta)
+          syncKeyframesAfterDirectEdit(p, storeRef)
         }
         redrawOverlay()
         commitHistory()
