@@ -1,7 +1,22 @@
 import paper from 'paper'
 import type { EditorState } from '../store/editorStore'
-import { findPathById, findPathsByIds, hitTestPath, findNearestLocation, ensurePathName } from './hitTest'
-import { type OverlayHit, type ResizeCorner, hitTestOverlay, drawTransformLabel, cursorForOverlayHit } from './overlay'
+import {
+  findPathById,
+  findPathsByIds,
+  hitTestPath,
+  findNearestLocation,
+  ensurePathName,
+  generatePathName,
+} from './hitTest'
+import {
+  type OverlayHit,
+  type ResizeCorner,
+  hitTestOverlay,
+  drawTransformLabel,
+  drawHoverHighlight,
+  cursorForOverlayHit,
+  computeSelectionBounds,
+} from './overlay'
 import { syncKeyframesAfterDirectEdit } from './animationPlayback'
 
 const MIN_RESIZE_SIZE = 2
@@ -44,6 +59,50 @@ export function computeResizedBounds(
   return new paper.Rectangle(new paper.Point(left, top), new paper.Point(right, bottom))
 }
 
+/** Alt-resize variant: the handle's own axis grows/shrinks symmetrically about the bounds' center instead of anchoring the opposite edge — same behavior as Figma/Illustrator's "resize from center" modifier. An edge handle (e.g. 't') only touches its own axis; the other axis keeps its original half-size, centered. Exported for unit testing — pure geometry. */
+export function computeResizedBoundsFromCenter(
+  start: paper.Rectangle,
+  corner: ResizeCorner,
+  point: paper.Point,
+  keepAspect: boolean,
+): paper.Rectangle {
+  const center = start.center
+  let halfW = start.width / 2
+  let halfH = start.height / 2
+  if (corner.includes('l') || corner.includes('r')) halfW = Math.abs(point.x - center.x)
+  if (corner.includes('t') || corner.includes('b')) halfH = Math.abs(point.y - center.y)
+
+  const isCornerHandle = corner.length === 2
+  if (keepAspect && isCornerHandle && start.width > 0 && start.height > 0) {
+    halfH = halfW / (start.width / start.height)
+  }
+
+  halfW = Math.max(MIN_RESIZE_SIZE / 2, halfW)
+  halfH = Math.max(MIN_RESIZE_SIZE / 2, halfH)
+  return new paper.Rectangle(
+    new paper.Point(center.x - halfW, center.y - halfH),
+    new paper.Point(center.x + halfW, center.y + halfH),
+  )
+}
+
+/** Maps every path's own original bounds through the same scale/translate transform that takes the group's combined `startBounds` to `nextBounds` — lets a multi-selection resize as one bounding box while each shape individually scales and repositions, instead of every shape collapsing onto the same rectangle. For a single-path selection this reduces to exactly `path.bounds = nextBounds`, so single-shape resize behavior is unchanged. */
+function applyGroupResize(
+  paths: paper.Path[],
+  originalBounds: paper.Rectangle[],
+  startBounds: paper.Rectangle,
+  nextBounds: paper.Rectangle,
+) {
+  const scaleX = startBounds.width > 0 ? nextBounds.width / startBounds.width : 1
+  const scaleY = startBounds.height > 0 ? nextBounds.height / startBounds.height : 1
+  paths.forEach((path, i) => {
+    const orig = originalBounds[i]
+    const newTopLeft = nextBounds.topLeft.add(
+      new paper.Point((orig.x - startBounds.x) * scaleX, (orig.y - startBounds.y) * scaleY),
+    )
+    path.bounds = new paper.Rectangle(newTopLeft, new paper.Size(orig.width * scaleX, orig.height * scaleY))
+  })
+}
+
 export const ACCENT = '#aa3bff'
 export const MARQUEE_FILL = 'rgba(170, 59, 255, 0.12)'
 export const ANCHOR_RADIUS = 4
@@ -65,15 +124,23 @@ export interface ToolContext {
 
 export function createSelectTool(ctx: ToolContext): paper.Tool {
   const { scope, contentLayer, overlayLayer, storeRef, redrawOverlay, commitHistory } = ctx
-  let dragPaths: paper.Path[] = []
+  // Move-drag state. `start` is each path's position captured at mousedown — deltas are
+  // computed from the fixed `dragOrigin` every frame (not accumulated via event.delta) so
+  // Shift-constrain can pick the dominant axis from the *total* drag, not frame-to-frame.
+  let dragPaths: { path: paper.Path; start: paper.Point }[] = []
+  let dragOrigin: paper.Point | null = null
   let marqueeStart: paper.Point | null = null
   let marqueeAdditive = false
   let marqueeRect: paper.Path | null = null
 
   // Resize/rotate handle drag state — mutually exclusive with dragPaths/marqueeStart above.
-  let transformPath: paper.Path | null = null
+  // Works for one path or a whole multi-selection: transformStartBounds/transformOriginalBounds
+  // capture the group's combined bounds and each path's own original bounds once at drag start,
+  // so every frame can recompute an absolute target (no per-frame drift) via applyGroupResize.
+  let transformPaths: paper.Path[] = []
   let transformHit: OverlayHit | null = null
   let transformStartBounds: paper.Rectangle | null = null
+  let transformOriginalBounds: paper.Rectangle[] = []
   let transformCenter: paper.Point | null = null
   let transformStartAngle = 0
   let transformTotalRotationDeg = 0
@@ -87,34 +154,71 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   let draggingAnchorPath: paper.Path | null = null
   let draggingAnchorIndex: number | null = null
 
+  // Hover preview (unselected shape under the cursor) — see drawHoverHighlight. Kept separate
+  // from the main overlay-clear/redraw cycle so it doesn't need a full redrawOverlay() (which
+  // also reschedules autosave) on every plain mousemove.
+  let hoverPathName: string | null = null
+  let hoverHighlight: paper.Item | null = null
+  const clearHover = () => {
+    if (hoverHighlight) hoverHighlight.remove()
+    hoverHighlight = null
+    hoverPathName = null
+  }
+  const showHover = (path: paper.Path) => {
+    if (hoverPathName === path.name) return
+    clearHover()
+    drawHoverHighlight(overlayLayer, path, scope.view.zoom)
+    hoverHighlight = overlayLayer.lastChild
+    hoverPathName = path.name
+  }
+
+  /** Begins a move-drag for `paths` — or, when `alt` is held, clones them first (Figma/Illustrator's Alt-drag-to-duplicate) and drags the clones instead, leaving the originals in place. */
+  const startDrag = (paths: paper.Path[], origin: paper.Point, alt: boolean) => {
+    let targets = paths
+    if (alt) {
+      targets = paths.map((p) => {
+        const clone = p.clone({ insert: true }) as paper.Path
+        clone.name = generatePathName()
+        return clone
+      })
+      storeRef.current.setSelection(targets.map((p) => p.name))
+    }
+    dragPaths = targets.map((path) => ({ path, start: path.position.clone() }))
+    dragOrigin = origin
+  }
+
   const tool = new scope.Tool()
   tool.onMouseDown = (event: paper.ToolEvent) => {
+    clearHover()
     marqueeStart = null
     dragPaths = []
-    transformPath = null
+    dragOrigin = null
+    transformPaths = []
     transformHit = null
     draggingAnchorPath = null
     draggingAnchorIndex = null
 
     const { selectedPathIds } = storeRef.current
-    if (selectedPathIds.length === 1) {
-      const activePath = findPathById(contentLayer, selectedPathIds[0])
-      if (activePath) {
+    if (selectedPathIds.length >= 1) {
+      const selectedPaths = findPathsByIds(contentLayer, selectedPathIds)
+      if (selectedPaths.length > 0) {
         const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
         if (overlayHit && (overlayHit.type === 'resize' || overlayHit.type === 'rotate')) {
-          transformPath = activePath
+          const bounds = computeSelectionBounds(selectedPaths)!
+          transformPaths = selectedPaths
           transformHit = overlayHit
-          transformStartBounds = activePath.bounds.clone()
-          transformCenter = activePath.position
+          transformStartBounds = new paper.Rectangle(bounds.x, bounds.y, bounds.width, bounds.height)
+          transformOriginalBounds = selectedPaths.map((p) => p.bounds.clone())
+          transformCenter = transformStartBounds.center
           transformStartAngle = event.point.subtract(transformCenter).angle
           transformTotalRotationDeg = 0
           scope.view.element.style.cursor = cursorForOverlayHit(overlayHit)
           return
         }
-        if (overlayHit && overlayHit.type === 'anchor') {
-          draggingAnchorPath = activePath
+        if (selectedPaths.length === 1 && overlayHit && overlayHit.type === 'anchor') {
+          draggingAnchorPath = selectedPaths[0]
           draggingAnchorIndex = overlayHit.segmentIndex
-          storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
+          storeRef.current.setSelection([selectedPaths[0].name], overlayHit.segmentIndex)
           scope.view.element.style.cursor = 'grabbing'
           redrawOverlay()
           return
@@ -133,10 +237,10 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
         )
       } else if (selectedPathIds.includes(hitId) && selectedPathIds.length > 1) {
         // Clicking a member of an existing multi-selection drags the whole group.
-        dragPaths = findPathsByIds(contentLayer, selectedPathIds)
+        startDrag(findPathsByIds(contentLayer, selectedPathIds), event.point, event.modifiers.alt)
       } else {
-        storeRef.current.setSelection([hitId])
-        dragPaths = [hit]
+        if (!event.modifiers.alt) storeRef.current.setSelection([hitId])
+        startDrag([hit], event.point, event.modifiers.alt)
       }
       scope.view.element.style.cursor = 'move'
     } else if (event.modifiers.shift) {
@@ -151,22 +255,25 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   }
   tool.onMouseMove = (event: paper.ToolEvent) => {
     const { selectedPathIds } = storeRef.current
-    if (selectedPathIds.length === 1) {
-      const activePath = findPathById(contentLayer, selectedPathIds[0])
-      if (activePath) {
-        const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
-        const overlayCursor = cursorForOverlayHit(overlayHit)
-        if (overlayCursor) {
-          scope.view.element.style.cursor = overlayCursor
-          return
-        }
+    if (selectedPathIds.length >= 1) {
+      const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
+      const overlayCursor = cursorForOverlayHit(overlayHit)
+      if (overlayCursor) {
+        scope.view.element.style.cursor = overlayCursor
+        clearHover()
+        return
       }
     }
     const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
     scope.view.element.style.cursor = hit ? 'move' : ''
+    if (hit && !selectedPathIds.includes(hit.name)) {
+      showHover(hit)
+    } else {
+      clearHover()
+    }
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
-    if (transformPath && transformHit && transformCenter) {
+    if (transformPaths.length > 0 && transformHit && transformCenter) {
       if (transformHit.type === 'rotate') {
         let angle = event.point.subtract(transformCenter).angle
         if (event.modifiers.shift) {
@@ -174,7 +281,7 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
         }
         const delta = angle - transformStartAngle
         if (delta !== 0) {
-          transformPath.rotate(delta, transformCenter)
+          for (const path of transformPaths) path.rotate(delta, transformCenter)
           transformTotalRotationDeg += delta
           transformStartAngle = angle
         }
@@ -182,13 +289,10 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
         drawTransformLabel(overlayLayer, event.point, `${Math.round(transformTotalRotationDeg)}°`, scope.view.zoom)
         return
       } else if (transformHit.type === 'resize' && transformStartBounds) {
-        const nextBounds = computeResizedBounds(
-          transformStartBounds,
-          transformHit.corner,
-          event.point,
-          event.modifiers.shift,
-        )
-        transformPath.bounds = nextBounds
+        const nextBounds = event.modifiers.alt
+          ? computeResizedBoundsFromCenter(transformStartBounds, transformHit.corner, event.point, event.modifiers.shift)
+          : computeResizedBounds(transformStartBounds, transformHit.corner, event.point, event.modifiers.shift)
+        applyGroupResize(transformPaths, transformOriginalBounds, transformStartBounds, nextBounds)
         redrawOverlay()
         drawTransformLabel(
           overlayLayer,
@@ -207,9 +311,13 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       redrawOverlay()
       return
     }
-    if (dragPaths.length > 0) {
-      for (const path of dragPaths) {
-        path.position = path.position.add(event.delta)
+    if (dragPaths.length > 0 && dragOrigin) {
+      let delta = event.point.subtract(dragOrigin)
+      if (event.modifiers.shift) {
+        delta = Math.abs(delta.x) > Math.abs(delta.y) ? new paper.Point(delta.x, 0) : new paper.Point(0, delta.y)
+      }
+      for (const { path, start } of dragPaths) {
+        path.position = start.add(delta)
       }
       redrawOverlay()
       return
@@ -226,11 +334,14 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
     }
   }
   tool.onMouseUp = (event: paper.ToolEvent) => {
-    if (transformPath) {
-      syncKeyframesAfterDirectEdit(transformPath, storeRef, { rotationDeltaDeg: transformTotalRotationDeg })
-      transformPath = null
+    if (transformPaths.length > 0) {
+      for (const path of transformPaths) {
+        syncKeyframesAfterDirectEdit(path, storeRef, { rotationDeltaDeg: transformTotalRotationDeg })
+      }
+      transformPaths = []
       transformHit = null
       transformStartBounds = null
+      transformOriginalBounds = []
       transformCenter = null
       transformTotalRotationDeg = 0
       commitHistory()
@@ -248,8 +359,9 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
       return
     }
     if (dragPaths.length > 0) {
-      for (const path of dragPaths) syncKeyframesAfterDirectEdit(path, storeRef)
+      for (const { path } of dragPaths) syncKeyframesAfterDirectEdit(path, storeRef)
       dragPaths = []
+      dragOrigin = null
       commitHistory()
       return
     }
@@ -273,13 +385,40 @@ export function createSelectTool(ctx: ToolContext): paper.Tool {
   return tool
 }
 
+const DOUBLE_CLICK_MS = 350
+
 export function createNodeTool(ctx: ToolContext): paper.Tool {
   const { scope, contentLayer, overlayLayer, storeRef, redrawOverlay, commitHistory } = ctx
   let dragPath: paper.Path | null = null
   let drag: OverlayHit | null = null
 
+  // Nodes toggled "corner" via double-click (see onMouseDown below) stop mirroring their
+  // opposite handle on drag, same as Figma/Illustrator's smooth↔corner node toggle — persists
+  // for the rest of the session (ephemeral, not saved with the project; same tier of state as
+  // the drag/transform variables above it, just longer-lived).
+  const cornerNodes = new Set<string>()
+  const cornerKey = (pathName: string, index: number) => `${pathName}:${index}`
+  let lastClickKey: string | null = null
+  let lastClickTime = 0
+
+  let hoverPathName: string | null = null
+  let hoverHighlight: paper.Item | null = null
+  const clearHover = () => {
+    if (hoverHighlight) hoverHighlight.remove()
+    hoverHighlight = null
+    hoverPathName = null
+  }
+  const showHover = (path: paper.Path) => {
+    if (hoverPathName === path.name) return
+    clearHover()
+    drawHoverHighlight(overlayLayer, path, scope.view.zoom)
+    hoverHighlight = overlayLayer.lastChild
+    hoverPathName = path.name
+  }
+
   const tool = new scope.Tool()
   tool.onMouseDown = (event: paper.ToolEvent) => {
+    clearHover()
     const { selectedPathIds } = storeRef.current
     const activePath =
       selectedPathIds.length === 1 ? findPathById(contentLayer, selectedPathIds[0]) : null
@@ -287,6 +426,19 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     if (activePath) {
       const overlayHit = hitTestOverlay(overlayLayer, event.point, scope.view.zoom)
       if (overlayHit) {
+        if (overlayHit.type === 'anchor') {
+          const key = cornerKey(activePath.name, overlayHit.segmentIndex)
+          const now = Date.now()
+          const isDoubleClick = lastClickKey === key && now - lastClickTime < DOUBLE_CLICK_MS
+          lastClickKey = isDoubleClick ? null : key
+          lastClickTime = now
+          if (isDoubleClick) {
+            if (cornerNodes.has(key)) cornerNodes.delete(key)
+            else cornerNodes.add(key)
+            redrawOverlay()
+            return
+          }
+        }
         dragPath = activePath
         drag = overlayHit
         if (overlayHit.type === 'anchor') {
@@ -295,6 +447,24 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
         scope.view.element.style.cursor = 'grabbing'
         redrawOverlay()
         return
+      }
+
+      // Clicking directly on the selected path's own curve (not an existing anchor/handle)
+      // inserts a new point there and picks it straight up to drag — Figma/Illustrator let you
+      // add a point without switching away from the node-editing tool, instead of requiring
+      // the separate Add Point tool this app also still has.
+      const zoom = scope.view.zoom
+      const location = activePath.getNearestLocation(event.point)
+      if (location && location.point.getDistance(event.point) <= ADD_POINT_TOLERANCE / zoom) {
+        const segment = activePath.divideAt(location)
+        if (segment) {
+          dragPath = activePath
+          drag = { type: 'anchor', segmentIndex: segment.index }
+          storeRef.current.setSelection([activePath.name], segment.index)
+          scope.view.element.style.cursor = 'grabbing'
+          redrawOverlay()
+          return
+        }
       }
     }
 
@@ -311,10 +481,16 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     const overlayCursor = cursorForOverlayHit(overlayHit)
     if (overlayCursor) {
       scope.view.element.style.cursor = overlayCursor
+      clearHover()
       return
     }
     const hit = hitTestPath(contentLayer, event.point, scope.view.zoom)
     scope.view.element.style.cursor = hit ? 'pointer' : ''
+    if (hit && !selectedPathIds.includes(hit.name)) {
+      showHover(hit)
+    } else {
+      clearHover()
+    }
   }
   tool.onMouseDrag = (event: paper.ToolEvent) => {
     if (!dragPath || !drag) return
@@ -322,16 +498,17 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
     const segment = dragPath.segments[drag.segmentIndex]
     if (!segment) return
 
+    const isCorner = event.modifiers.alt || cornerNodes.has(cornerKey(dragPath.name, drag.segmentIndex))
     if (drag.type === 'anchor') {
       segment.point = segment.point.add(event.delta)
     } else if (drag.type === 'handleIn') {
       segment.handleIn = segment.handleIn.add(event.delta)
-      if (!event.modifiers.alt) {
+      if (!isCorner) {
         segment.handleOut = segment.handleIn.multiply(-1)
       }
     } else if (drag.type === 'handleOut') {
       segment.handleOut = segment.handleOut.add(event.delta)
-      if (!event.modifiers.alt) {
+      if (!isCorner) {
         segment.handleIn = segment.handleOut.multiply(-1)
       }
     }

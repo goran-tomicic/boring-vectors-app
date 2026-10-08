@@ -290,4 +290,257 @@ test.describe('drawing tools', () => {
     expect(secondAfter.x - secondBefore.x).toBeCloseTo(dx, 0)
     expect(secondAfter.y - secondBefore.y).toBeCloseTo(dy, 0)
   })
+
+  test('arrow keys nudge the selected shape by 1px, 10px with Shift', async ({ page }) => {
+    const before = await readPositionProps(page)
+    await page.keyboard.press('ArrowRight')
+    await page.keyboard.press('ArrowDown')
+    let after = await readPositionProps(page)
+    expect(after.x - before.x).toBe(1)
+    expect(after.y - before.y).toBe(1)
+
+    await page.keyboard.press('Shift+ArrowRight')
+    after = await readPositionProps(page)
+    expect(after.x - before.x).toBe(11)
+  })
+
+  test('shift-dragging a shape constrains the move to one axis', async ({ page }) => {
+    const before = await readPositionProps(page)
+    const center = await pathPointToScreen(page, before.x + before.w / 2, before.y + before.h / 2)
+
+    await page.mouse.move(center.x, center.y)
+    await page.mouse.down()
+    await page.keyboard.down('Shift')
+    await page.mouse.move(center.x + 60, center.y + 10, { steps: 8 })
+    await page.keyboard.up('Shift')
+    await page.mouse.up()
+
+    const after = await readPositionProps(page)
+    expect(after.x).toBeGreaterThan(before.x)
+    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(1)
+  })
+
+  test('alt-dragging a shape duplicates it, leaving the original in place', async ({ page }) => {
+    const before = await readPositionProps(page)
+    const center = await pathPointToScreen(page, before.x + before.w / 2, before.y + before.h / 2)
+
+    await page.keyboard.down('Alt')
+    await page.mouse.move(center.x, center.y)
+    await page.mouse.down()
+    await page.mouse.move(center.x + 80, center.y + 40, { steps: 8 })
+    await page.mouse.up()
+    await page.keyboard.up('Alt')
+
+    const rows = page.locator('.LayersPanel-row')
+    await expect(rows).toHaveCount(2)
+    const positions = []
+    for (let i = 0; i < 2; i++) {
+      await rows.nth(i).click()
+      positions.push(await readPositionProps(page))
+    }
+    const matchesOriginal = (p: { x: number; y: number }) =>
+      Math.abs(p.x - before.x) < 1 && Math.abs(p.y - before.y) < 1
+    // Exactly one of the two paths is still at the original position; the other moved with the drag.
+    expect(positions.filter(matchesOriginal)).toHaveLength(1)
+  })
+
+  test('alt-resizing anchors the shape\'s center instead of the opposite corner', async ({ page }) => {
+    const before = await readPositionProps(page)
+    const centerBefore = { x: before.x + before.w / 2, y: before.y + before.h / 2 }
+    const brHandle = await pathPointToScreen(page, before.x + before.w, before.y + before.h)
+
+    await page.keyboard.down('Alt')
+    await page.mouse.move(brHandle.x, brHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(brHandle.x + 40, brHandle.y + 30, { steps: 8 })
+    await page.mouse.up()
+    await page.keyboard.up('Alt')
+
+    const after = await readPositionProps(page)
+    const centerAfter = { x: after.x + after.w / 2, y: after.y + after.h / 2 }
+    expect(after.w).toBeGreaterThan(before.w)
+    // readPositionProps rounds twice (once per read) so a 1px rounding wobble is expected —
+    // the center staying fixed is what matters, not sub-pixel precision.
+    expect(Math.abs(centerAfter.x - centerBefore.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(centerAfter.y - centerBefore.y)).toBeLessThanOrEqual(1)
+  })
+
+  test('resize handles work across a multi-selection, scaling every shape together', async ({ page }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 160, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 300, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 360, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+    await page.keyboard.press('v')
+
+    const rows = page.locator('.LayersPanel-row')
+    await rows.nth(0).click()
+    const firstBefore = await readPositionProps(page)
+    await rows.nth(1).click()
+    const secondBefore = await readPositionProps(page)
+    // LayersPanel lists frontmost-first (most recently drawn on top), not draw order — identify
+    // "the one at the group's left edge" by position rather than assuming row 0 is it.
+    const leftIsFirst = firstBefore.x <= secondBefore.x
+
+    await rows.nth(0).click()
+    await rows.nth(1).click({ modifiers: ['Shift'] })
+    const combinedBefore = await readPositionProps(page)
+    const brHandle = await pathPointToScreen(
+      page,
+      combinedBefore.x + combinedBefore.w,
+      combinedBefore.y + combinedBefore.h,
+    )
+
+    await page.mouse.move(brHandle.x, brHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(brHandle.x + 60, brHandle.y + 40, { steps: 8 })
+    await page.mouse.up()
+
+    // Both shapes individually grew — the whole group resized, not just its bounding box.
+    await rows.nth(0).click()
+    const firstAfter = await readPositionProps(page)
+    await rows.nth(1).click()
+    const secondAfter = await readPositionProps(page)
+    expect(firstAfter.w).toBeGreaterThan(firstBefore.w)
+    expect(secondAfter.w).toBeGreaterThan(secondBefore.w)
+    // Resizing from the br handle anchors the group's top-left — the shape that started there
+    // stays put; the other one (offset from that anchor) shifts further right as the group grows.
+    const [anchoredBefore, anchoredAfter, driftedBefore, driftedAfter] = leftIsFirst
+      ? [firstBefore, firstAfter, secondBefore, secondAfter]
+      : [secondBefore, secondAfter, firstBefore, firstAfter]
+    expect(Math.abs(anchoredAfter.x - anchoredBefore.x)).toBeLessThanOrEqual(2)
+    expect(driftedAfter.x).toBeGreaterThan(driftedBefore.x)
+  })
+
+  test('rotate handle works across a multi-selection, rotating every shape around the group center', async ({
+    page,
+  }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 160, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 300, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 360, box.y + 150, { steps: 5 })
+    await page.mouse.up()
+    await page.keyboard.press('v')
+
+    const rows = page.locator('.LayersPanel-row')
+    await rows.nth(0).click()
+    const firstBefore = await readPositionProps(page)
+    await rows.nth(1).click()
+    const secondBefore = await readPositionProps(page)
+
+    await rows.nth(0).click()
+    await rows.nth(1).click({ modifiers: ['Shift'] })
+    const combinedBefore = await readPositionProps(page)
+    const topCenter = await pathPointToScreen(page, combinedBefore.x + combinedBefore.w / 2, combinedBefore.y)
+    const rotateHandle = { x: topCenter.x, y: topCenter.y - 22 }
+
+    await page.mouse.move(rotateHandle.x, rotateHandle.y)
+    await page.mouse.down()
+    await page.mouse.move(rotateHandle.x + 90, rotateHandle.y + 20, { steps: 8 })
+    await page.mouse.up()
+
+    await rows.nth(0).click()
+    const firstAfter = await readPositionProps(page)
+    await rows.nth(1).click()
+    const secondAfter = await readPositionProps(page)
+    const changed = (b: typeof firstBefore, a: typeof firstBefore) =>
+      Math.abs(a.w - b.w) > 1 || Math.abs(a.h - b.h) > 1 || Math.abs(a.x - b.x) > 1 || Math.abs(a.y - b.y) > 1
+    expect(changed(firstBefore, firstAfter)).toBe(true)
+    expect(changed(secondBefore, secondAfter)).toBe(true)
+  })
+
+  test('clicking a selected path\'s own curve in the Node tool adds a point without switching tools', async ({
+    page,
+  }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 200, box.y + 200, { steps: 5 })
+    await page.mouse.up()
+
+    const before = await readPositionProps(page)
+    const infoBefore = await page.locator('.PropsPanel-info').innerText()
+
+    await page.keyboard.press('n')
+    const topMid = await pathPointToScreen(page, before.x + before.w / 2, before.y)
+    await page.mouse.move(topMid.x, topMid.y)
+    await page.mouse.down()
+    await page.mouse.up()
+
+    const infoAfter = await page.locator('.PropsPanel-info').innerText()
+    expect(infoAfter).not.toBe(infoBefore)
+    expect(infoAfter).toContain('Nodes: 5')
+
+    const nodeXInput = page.locator('.PropsPanel-row').nth(2).locator('input').first()
+    const nodeYInput = page.locator('.PropsPanel-row').nth(2).locator('input').nth(1)
+    expect(Math.abs(Number(await nodeXInput.inputValue()) - (before.x + before.w / 2))).toBeLessThan(3)
+    expect(Math.abs(Number(await nodeYInput.inputValue()) - before.y)).toBeLessThan(3)
+  })
+
+  test('double-clicking a node toggles corner mode, stopping its handles from mirroring', async ({ page }) => {
+    const p1 = await pathPointToScreen(page, 200, 200)
+    const p2 = await pathPointToScreen(page, 350, 200)
+
+    await page.keyboard.press('p')
+    await page.mouse.move(p1.x, p1.y)
+    await page.mouse.down()
+    await page.mouse.move(p1.x + 40, p1.y - 20, { steps: 5 })
+    await page.mouse.up()
+    await page.mouse.move(p2.x, p2.y)
+    await page.mouse.down()
+    await page.mouse.up()
+    await page.keyboard.press('Enter')
+
+    await page.keyboard.press('n')
+    await page.mouse.click(p1.x, p1.y)
+
+    const handleInRow = page.locator('.PropsPanel-row').nth(3)
+    const handleOutRow = page.locator('.PropsPanel-row').nth(4)
+    const readXY = async (row: typeof handleInRow) => ({
+      x: Number(await row.locator('input').nth(0).inputValue()),
+      y: Number(await row.locator('input').nth(1).inputValue()),
+    })
+
+    const handleInBefore = await readXY(handleInRow)
+    const handleOutBefore = await readXY(handleOutRow)
+    const dragScreen1 = await pathPointToScreen(page, handleOutBefore.x, handleOutBefore.y)
+    await page.mouse.move(dragScreen1.x, dragScreen1.y)
+    await page.mouse.down()
+    await page.mouse.move(dragScreen1.x + 20, dragScreen1.y + 15, { steps: 5 })
+    await page.mouse.up()
+    // Default (smooth) behavior: moving handle-out mirrors handle-in.
+    expect(await readXY(handleInRow)).not.toEqual(handleInBefore)
+
+    await page.mouse.dblclick(p1.x, p1.y)
+
+    const handleInBeforeCorner = await readXY(handleInRow)
+    const handleOutBeforeCorner = await readXY(handleOutRow)
+    const dragScreen2 = await pathPointToScreen(page, handleOutBeforeCorner.x, handleOutBeforeCorner.y)
+    await page.mouse.move(dragScreen2.x, dragScreen2.y)
+    await page.mouse.down()
+    await page.mouse.move(dragScreen2.x - 15, dragScreen2.y - 25, { steps: 5 })
+    await page.mouse.up()
+    // After the double-click toggle: handle-in no longer follows handle-out.
+    expect(await readXY(handleInRow)).toEqual(handleInBeforeCorner)
+  })
 })
