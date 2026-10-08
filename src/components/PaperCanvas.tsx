@@ -56,6 +56,8 @@ const MAX_ZOOM = 10
 const ZOOM_WHEEL_SENSITIVITY = 1.0015
 const AUTOSAVE_DEBOUNCE_MS = 500
 const MAX_HISTORY = 100
+const NUDGE_STEP = 1
+const NUDGE_STEP_LARGE = 10
 
 // Select/Node manage their own cursor dynamically per-handle (see tools.ts's onMouseMove) —
 // omitted here so the tool-switch effect below doesn't fight that. Every other tool places
@@ -223,7 +225,7 @@ function PaperCanvas() {
             drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
           } else if (tool === 'select') {
             drawSelectionHighlight(overlayLayer, path, zoom)
-            drawTransformHandles(overlayLayer, path, zoom)
+            drawTransformHandles(overlayLayer, path.bounds, zoom)
             drawNodeOverlay(overlayLayer, path, zoom, null, false)
           } else {
             drawSelectionHighlight(overlayLayer, path, zoom)
@@ -241,6 +243,9 @@ function PaperCanvas() {
       storeRef.current.setSelectionBounds(bounds)
       if (bounds && paths.length > 1) {
         drawSelectionBoundsHighlight(overlayLayer, bounds, zoom)
+        if (tool === 'select') {
+          drawTransformHandles(overlayLayer, new paper.Rectangle(bounds.x, bounds.y, bounds.width, bounds.height), zoom)
+        }
       }
     }
 
@@ -587,6 +592,35 @@ function PaperCanvas() {
         event.preventDefault()
         scope.activate()
         deleteSelected()
+      } else if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
+        if (storeRef.current.isPlaying) return
+        const { selectedPathIds, selectedSegmentIndex, tool } = storeRef.current
+        if (selectedPathIds.length === 0) return
+        event.preventDefault()
+        scope.activate()
+        const step = event.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP
+        const delta = new paper.Point(
+          key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0,
+          key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0,
+        )
+        // In Node mode with exactly one node selected, the arrow keys nudge that node —
+        // matching Figma/Illustrator's direct-select tool — otherwise they move the whole
+        // selection, same as the Select tool's drag.
+        if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndex !== null) {
+          const path = findPathById(contentLayer, selectedPathIds[0])
+          const segment = path?.segments[selectedSegmentIndex]
+          if (segment) {
+            segment.point = segment.point.add(delta)
+            syncKeyframesAfterDirectEdit(path!, storeRef)
+          }
+        } else {
+          for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
+            path.position = path.position.add(delta)
+            syncKeyframesAfterDirectEdit(path, storeRef)
+          }
+        }
+        redrawOverlay()
+        commitHistory()
       } else {
         return
       }

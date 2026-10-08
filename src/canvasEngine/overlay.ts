@@ -122,9 +122,19 @@ export function drawSelectionBoundsHighlight(
   })
 }
 
-/** Resize (8 handles around the bounds) + rotate (one handle above top-center) overlay for the Select tool's single-selection case — lets the user resize/rotate without switching to a dedicated tool. */
-export function drawTransformHandles(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
-  const bounds = path.bounds
+/** Hover outline for whatever the Select/Node tool is hovering but hasn't selected — lets you see what a click will hit before you commit to it, same as Figma's blue hover outline. */
+export function drawHoverHighlight(overlayLayer: paper.Layer, path: paper.Path, zoom: number) {
+  new paper.Path.Rectangle({
+    rectangle: path.bounds,
+    strokeColor: ACCENT,
+    strokeWidth: 1 / zoom,
+    opacity: 0.5,
+    parent: overlayLayer,
+  })
+}
+
+/** Resize (8 handles around the bounds) + rotate (one handle above top-center) overlay for the Select tool's selection — takes the bounds directly rather than a path so the same handles work for a single shape or a multi-selection's combined bounding box. */
+export function drawTransformHandles(overlayLayer: paper.Layer, bounds: paper.Rectangle, zoom: number) {
   const size = RESIZE_HANDLE_SIZE / zoom
   const corners: { corner: ResizeCorner; point: paper.Point }[] = [
     { corner: 'tl', point: bounds.topLeft },
@@ -197,14 +207,18 @@ export function drawNodeOverlay(
   overlayLayer: paper.Layer,
   path: paper.Path,
   zoom: number,
-  selectedSegmentIndex: number | null,
+  selectedSegmentIndex: number | null | Set<number>,
   showHandles = true,
 ) {
   const anchorRadius = ANCHOR_RADIUS / zoom
   const handleRadius = HANDLE_RADIUS / zoom
+  const selectedIndices =
+    selectedSegmentIndex instanceof Set
+      ? selectedSegmentIndex
+      : new Set(selectedSegmentIndex !== null ? [selectedSegmentIndex] : [])
 
   path.segments.forEach((segment, index) => {
-    const isSelected = index === selectedSegmentIndex
+    const isSelected = selectedIndices.has(index)
 
     if (showHandles && !segment.handleIn.isZero()) {
       const handlePoint = segment.point.add(segment.handleIn)

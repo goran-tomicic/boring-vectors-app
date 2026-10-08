@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import paper from 'paper'
-import { computeResizedBounds } from './tools'
+import { computeResizedBounds, computeResizedBoundsFromCenter } from './tools'
 
 // paper.Rectangle/Point are plain geometry classes — no canvas/DOM needed, so this is safe
 // to unit-test in Vitest's node environment without a paper.setup() scope.
@@ -69,6 +69,45 @@ describe('computeResizedBounds', () => {
     const next = computeResizedBounds(start, 'tl', new paper.Point(400, 300), false)
     expect(next.right).toBe(300)
     expect(next.bottom).toBe(200)
+    expect(next.width).toBeGreaterThan(0)
+    expect(next.height).toBeGreaterThan(0)
+  })
+})
+
+describe('computeResizedBoundsFromCenter', () => {
+  const start = rect(100, 100, 200, 100) // center at (200, 150)
+
+  it('corner handle: grows symmetrically about the center on both axes', () => {
+    const next = computeResizedBoundsFromCenter(start, 'br', new paper.Point(300, 200), false)
+    // point is 100 right / 50 down from center -> half extents 100/50 on both sides
+    expect(next.left).toBe(100)
+    expect(next.right).toBe(300)
+    expect(next.top).toBe(100)
+    expect(next.bottom).toBe(200)
+  })
+
+  it('edge handle: only its own axis changes, centered; the other axis keeps its original size', () => {
+    const next = computeResizedBoundsFromCenter(start, 'r', new paper.Point(400, 999), false)
+    expect(next.left).toBe(0) // center.x(200) - halfW(200)
+    expect(next.right).toBe(400)
+    expect(next.top).toBe(100) // unchanged
+    expect(next.bottom).toBe(200)
+  })
+
+  it('keepAspect preserves the start aspect ratio on a corner drag', () => {
+    const next = computeResizedBoundsFromCenter(start, 'br', new paper.Point(500, 160), true)
+    expect(next.width / next.height).toBeCloseTo(2, 5)
+  })
+
+  it('center stays fixed regardless of which corner is dragged', () => {
+    const center = start.center
+    const next = computeResizedBoundsFromCenter(start, 'tl', new paper.Point(50, 50), false)
+    expect(next.center.x).toBeCloseTo(center.x, 5)
+    expect(next.center.y).toBeCloseTo(center.y, 5)
+  })
+
+  it('clamps to a minimum size instead of collapsing', () => {
+    const next = computeResizedBoundsFromCenter(start, 'br', new paper.Point(201, 151), false)
     expect(next.width).toBeGreaterThan(0)
     expect(next.height).toBeGreaterThan(0)
   })
