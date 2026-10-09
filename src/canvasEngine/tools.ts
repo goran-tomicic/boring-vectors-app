@@ -391,6 +391,10 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
   const { scope, contentLayer, overlayLayer, storeRef, redrawOverlay, commitHistory } = ctx
   let dragPath: paper.Path | null = null
   let drag: OverlayHit | null = null
+  // Non-empty only while dragging an anchor that's a member of an existing multi-node
+  // selection (shift-click several anchors first) — every index in it moves by the same
+  // delta. Empty for a single-node drag or any handle drag (handles are always per-node).
+  let dragGroupIndices: number[] = []
 
   // Nodes toggled "corner" via double-click (see onMouseDown below) stop mirroring their
   // opposite handle on drag, same as Figma/Illustrator's smooth↔corner node toggle — persists
@@ -419,6 +423,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
   const tool = new scope.Tool()
   tool.onMouseDown = (event: paper.ToolEvent) => {
     clearHover()
+    dragGroupIndices = []
     const { selectedPathIds } = storeRef.current
     const activePath =
       selectedPathIds.length === 1 ? findPathById(contentLayer, selectedPathIds[0]) : null
@@ -438,12 +443,33 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
             redrawOverlay()
             return
           }
+
+          const { selectedSegmentIndices } = storeRef.current
+          if (event.modifiers.shift) {
+            // Shift-click toggles membership only — same as the Select tool's shift-click on a
+            // path — it doesn't also start a drag.
+            const already = selectedSegmentIndices.includes(overlayHit.segmentIndex)
+            storeRef.current.setSegmentSelection(
+              already
+                ? selectedSegmentIndices.filter((i) => i !== overlayHit.segmentIndex)
+                : [...selectedSegmentIndices, overlayHit.segmentIndex],
+            )
+            redrawOverlay()
+            return
+          }
+
+          const isGroupMember =
+            selectedSegmentIndices.includes(overlayHit.segmentIndex) && selectedSegmentIndices.length > 1
+          dragGroupIndices = isGroupMember ? selectedSegmentIndices : [overlayHit.segmentIndex]
+          if (!isGroupMember) storeRef.current.setSegmentSelection(dragGroupIndices)
+          dragPath = activePath
+          drag = overlayHit
+          scope.view.element.style.cursor = 'grabbing'
+          redrawOverlay()
+          return
         }
         dragPath = activePath
         drag = overlayHit
-        if (overlayHit.type === 'anchor') {
-          storeRef.current.setSelection([activePath.name], overlayHit.segmentIndex)
-        }
         scope.view.element.style.cursor = 'grabbing'
         redrawOverlay()
         return
@@ -495,6 +521,16 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
   tool.onMouseDrag = (event: paper.ToolEvent) => {
     if (!dragPath || !drag) return
     if (drag.type !== 'anchor' && drag.type !== 'handleIn' && drag.type !== 'handleOut') return
+
+    if (drag.type === 'anchor' && dragGroupIndices.length > 1) {
+      for (const index of dragGroupIndices) {
+        const groupSegment = dragPath.segments[index]
+        if (groupSegment) groupSegment.point = groupSegment.point.add(event.delta)
+      }
+      redrawOverlay()
+      return
+    }
+
     const segment = dragPath.segments[drag.segmentIndex]
     if (!segment) return
 
@@ -517,6 +553,7 @@ export function createNodeTool(ctx: ToolContext): paper.Tool {
   tool.onMouseUp = (event: paper.ToolEvent) => {
     dragPath = null
     drag = null
+    dragGroupIndices = []
     commitHistory()
     scope.view.element.style.cursor = ''
     tool.onMouseMove?.(event)

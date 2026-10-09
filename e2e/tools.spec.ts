@@ -543,4 +543,52 @@ test.describe('drawing tools', () => {
     // After the double-click toggle: handle-in no longer follows handle-out.
     expect(await readXY(handleInRow)).toEqual(handleInBeforeCorner)
   })
+
+  test('shift-clicking multiple nodes selects them together; dragging or deleting affects all of them', async ({
+    page,
+  }) => {
+    const canvas = page.locator('.CanvasWrap-canvas')
+    const box = (await canvas.boundingBox())!
+    await page.keyboard.press('m')
+    await page.mouse.move(box.x + 100, box.y + 100)
+    await page.mouse.down()
+    await page.mouse.move(box.x + 250, box.y + 220, { steps: 5 })
+    await page.mouse.up()
+
+    const before = await readPositionProps(page)
+    await page.keyboard.press('n')
+
+    const topLeft = await pathPointToScreen(page, before.x, before.y)
+    const bottomLeft = await pathPointToScreen(page, before.x, before.y + before.h)
+
+    await page.mouse.click(topLeft.x, topLeft.y)
+    await page.keyboard.down('Shift')
+    await page.mouse.click(bottomLeft.x, bottomLeft.y)
+    await page.keyboard.up('Shift')
+
+    // Node X/Y stays disabled for a multi-node selection, same pattern as multi-path selection.
+    const nodeXInput = page.locator('.PropsPanel-row').nth(2).locator('input').first()
+    await expect(nodeXInput).toBeDisabled()
+
+    // Drag one of the two selected left-edge anchors purely horizontally. If (and only if) both
+    // moved together, the left edge shifts right and the width shrinks by the same amount while
+    // the height stays exactly unchanged — if only the dragged node had moved, the other left
+    // corner would still anchor the bounding box's left edge and both width and height would
+    // read back identical to `before` (the moved corner would sit unseen inside the box).
+    const dx = 30
+    await page.mouse.move(topLeft.x, topLeft.y)
+    await page.mouse.down()
+    await page.mouse.move(topLeft.x + dx, topLeft.y, { steps: 5 })
+    await page.mouse.up()
+
+    const afterDrag = await readPositionProps(page)
+    expect(afterDrag.x).toBeGreaterThan(before.x)
+    expect(afterDrag.w).toBeCloseTo(before.w - (afterDrag.x - before.x), 0)
+    expect(afterDrag.h).toBe(before.h)
+
+    // Both nodes are still selected (the drag didn't drop the multi-selection) — deleting now
+    // removes both corners at once, not just one.
+    await page.keyboard.press('Delete')
+    await expect(page.locator('.PropsPanel-info')).toContainText('Nodes: 2')
+  })
 })

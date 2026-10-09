@@ -212,7 +212,7 @@ function PaperCanvas() {
     // split out from redrawOverlay so a playhead-driven refresh (every animation frame
     // during scrubbing/playback) doesn't also reschedule autosave on every tick.
     const refreshSelectionDisplay = () => {
-      const { selectedPathIds, selectedSegmentIndex, tool } = storeRef.current
+      const { selectedPathIds, selectedSegmentIndex, selectedSegmentIndices, tool } = storeRef.current
       clearOverlay(overlayLayer)
       const zoom = scope.view.zoom
 
@@ -222,7 +222,7 @@ function PaperCanvas() {
           storeRef.current.setSelectedPathProps(computeSelectedPathProps(path, selectedSegmentIndex))
           storeRef.current.setSelectionBounds(null)
           if (tool === 'node') {
-            drawNodeOverlay(overlayLayer, path, zoom, selectedSegmentIndex)
+            drawNodeOverlay(overlayLayer, path, zoom, new Set(selectedSegmentIndices))
           } else if (tool === 'select') {
             drawSelectionHighlight(overlayLayer, path, zoom)
             drawTransformHandles(overlayLayer, path.bounds, zoom)
@@ -345,13 +345,18 @@ function PaperCanvas() {
     }
 
     const deleteSelected = () => {
-      const { tool, selectedPathIds, selectedSegmentIndex } = storeRef.current
+      const { tool, selectedPathIds, selectedSegmentIndices } = storeRef.current
       if (storeRef.current.isPlaying) return
 
-      if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndex !== null) {
+      if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndices.length > 0) {
         const path = findPathById(contentLayer, selectedPathIds[0])
-        if (path && path.segments.length > MIN_SEGMENTS) {
-          path.removeSegment(selectedSegmentIndex)
+        if (path) {
+          // Descending order so removing one segment never shifts the index of one still queued.
+          const sorted = [...selectedSegmentIndices].sort((a, b) => b - a)
+          for (const index of sorted) {
+            if (path.segments.length <= MIN_SEGMENTS) break
+            path.removeSegment(index)
+          }
           storeRef.current.setSelection([path.name])
         }
       } else {
@@ -594,7 +599,7 @@ function PaperCanvas() {
         deleteSelected()
       } else if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight') {
         if (storeRef.current.isPlaying) return
-        const { selectedPathIds, selectedSegmentIndex, tool } = storeRef.current
+        const { selectedPathIds, selectedSegmentIndices, tool } = storeRef.current
         if (selectedPathIds.length === 0) return
         event.preventDefault()
         scope.activate()
@@ -603,15 +608,17 @@ function PaperCanvas() {
           key === 'ArrowLeft' ? -step : key === 'ArrowRight' ? step : 0,
           key === 'ArrowUp' ? -step : key === 'ArrowDown' ? step : 0,
         )
-        // In Node mode with exactly one node selected, the arrow keys nudge that node —
+        // In Node mode with one or more nodes selected, the arrow keys nudge those nodes —
         // matching Figma/Illustrator's direct-select tool — otherwise they move the whole
         // selection, same as the Select tool's drag.
-        if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndex !== null) {
+        if (tool === 'node' && selectedPathIds.length === 1 && selectedSegmentIndices.length > 0) {
           const path = findPathById(contentLayer, selectedPathIds[0])
-          const segment = path?.segments[selectedSegmentIndex]
-          if (segment) {
-            segment.point = segment.point.add(delta)
-            syncKeyframesAfterDirectEdit(path!, storeRef)
+          if (path) {
+            for (const index of selectedSegmentIndices) {
+              const segment = path.segments[index]
+              if (segment) segment.point = segment.point.add(delta)
+            }
+            syncKeyframesAfterDirectEdit(path, storeRef)
           }
         } else {
           for (const path of findPathsByIds(contentLayer, selectedPathIds)) {
@@ -688,6 +695,7 @@ function PaperCanvas() {
       if (
         state.selectedPathIds !== prevState.selectedPathIds ||
         state.selectedSegmentIndex !== prevState.selectedSegmentIndex ||
+        state.selectedSegmentIndices !== prevState.selectedSegmentIndices ||
         state.tool !== prevState.tool
       ) {
         scope.activate()

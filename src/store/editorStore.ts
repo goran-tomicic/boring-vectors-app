@@ -90,7 +90,12 @@ export interface EditorState {
   tool: Tool
   /** Multiple paths can be selected (Select tool: shift-click / marquee); Node tool always treats it as one active path. */
   selectedPathIds: string[]
+  /** The single selected node's index, for consumers that only make sense for exactly one node (PropsPanel's Node X/Y fields, `computeSelectedPathProps`) — null whenever zero or more than one node is selected. Always kept in sync with `selectedSegmentIndices` by `setSelection`/`setSegmentSelection`, never set independently. */
   selectedSegmentIndex: number | null
+  /** The full multi-node selection within the Node tool's one active path (shift-click to add/remove) — a superset of `selectedSegmentIndex`, which only reflects it when there's exactly one. */
+  selectedSegmentIndices: number[]
+  /** Sets the Node tool's node selection directly — used for shift-click toggling, where `setSelection`'s single-segmentIndex signature doesn't fit. */
+  setSegmentSelection: (indices: number[]) => void
   canvas: CanvasState
   settings: SettingsState
   status: string
@@ -228,6 +233,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   tool: 'select',
   selectedPathIds: [],
   selectedSegmentIndex: null,
+  selectedSegmentIndices: [],
+  setSegmentSelection: (indices) =>
+    set({ selectedSegmentIndices: indices, selectedSegmentIndex: indices.length === 1 ? indices[0] : null }),
   canvas: {
     width: 800,
     height: 600,
@@ -261,8 +269,12 @@ export const useEditorStore = create<EditorState>((set) => ({
     })),
   setStatus: (status) => set({ status }),
   setSelection: (pathIds, segmentIndex = null) =>
-    set({ selectedPathIds: pathIds, selectedSegmentIndex: segmentIndex }),
-  clearSelection: () => set({ selectedPathIds: [], selectedSegmentIndex: null }),
+    set({
+      selectedPathIds: pathIds,
+      selectedSegmentIndex: segmentIndex,
+      selectedSegmentIndices: segmentIndex !== null ? [segmentIndex] : [],
+    }),
+  clearSelection: () => set({ selectedPathIds: [], selectedSegmentIndex: null, selectedSegmentIndices: [] }),
   deleteRequest: 0,
   requestDelete: () => set((state) => ({ deleteRequest: state.deleteRequest + 1 })),
   exportRequest: null,
