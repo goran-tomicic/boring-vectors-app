@@ -415,11 +415,20 @@ function Timeline() {
                                 onChange={(e) =>
                                   setValueOverrides((prev) => ({ ...prev, [def.property]: Number(e.target.value) }))
                                 }
+                                onKeyDown={(e) => {
+                                  // Typing a value alone only updates the local preview
+                                  // (valueOverrides) — Enter commits it as a keyframe too,
+                                  // same as clicking "Key", instead of silently doing nothing.
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    handleAddKeyframe(def)
+                                  }
+                                }}
                               />
                               <button
                                 type="button"
                                 onClick={() => handleAddKeyframe(def)}
-                                title={`Set ${def.label} keyframe`}
+                                title={`Set ${def.label} keyframe (or press Enter in the field)`}
                               >
                                 Key
                               </button>
