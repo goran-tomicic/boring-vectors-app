@@ -4,7 +4,7 @@ A browser-based SVG editor **and** animator — import or draw vector shapes, ed
 
 **[Try it live →](https://boring-vectors.netlify.app/)**
 
-![Editor with a few imported shapes, layers panel, rulers, and properties panel](docs/images/hero.png)
+![Draw a shape, color it, key a rotation, play it back, and open the export menu](docs/images/demo.gif)
 
 ## What it does
 
@@ -14,7 +14,7 @@ A browser-based SVG editor **and** animator — import or draw vector shapes, ed
 - **Keyframe animation** — a Figma-style timeline for opacity, position, size, rotation, scale, and color, with per-keyframe easing
 - **Export** — static or animated SVG (native SMIL), PNG/JPG, GIF, WebM video, or a portable project file to reload later
 
-![Timeline panel with a rotation keyframe set, mid-animation](docs/images/animate.png)
+![Editor with a few imported shapes, layers panel, rulers, and properties panel](docs/images/hero.png)
 
 ## Dev
 
