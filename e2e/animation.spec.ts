@@ -59,6 +59,17 @@ test.describe('animation', () => {
       void track
     })
 
+    test('pressing Enter in a property field commits a keyframe, same as clicking Key', async ({ page }) => {
+      const { row } = await timelineTrackBox(page, 1) // X
+      const input = row.locator('input[type="number"]')
+
+      await input.fill('555')
+      await expect(row.locator('.Timeline-keyframe')).toHaveCount(0) // typing alone is just a preview
+      await input.press('Enter')
+      await expect(row.locator('.Timeline-keyframe')).toHaveCount(1)
+      await expect(row.locator('.Timeline-keyframe')).toHaveAttribute('title', /555/)
+    })
+
     test('scrubbing interpolates and keeps the field live (not stale)', async ({ page }) => {
       const { row, track, box } = await timelineTrackBox(page, 1) // X
       const input = row.locator('input[type="number"]')
