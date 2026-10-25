@@ -9,6 +9,10 @@ const MIN_PANEL_WIDTH = 160
 const MAX_PANEL_WIDTH = 480
 const DEFAULT_PANEL_WIDTH = 260
 
+// Common square icon sizes — a one-click shortcut to the artboard dimensions this app's
+// node/animation tooling is well suited for, instead of typing W/H by hand every time.
+const ICON_SIZE_PRESETS = [16, 24, 32, 48, 64, 128]
+
 function PropsPanel() {
   const props = useEditorStore((s) => s.selectedPathProps)
   const selectionBounds = useEditorStore((s) => s.selectionBounds)
@@ -79,6 +83,20 @@ function PropsPanel() {
               value={canvasHeight}
               onChange={(e) => setCanvasSize(canvasWidth, clampCanvasSize(Number(e.target.value)))}
             />
+          </div>
+          <div className="PropsPanel-presets">
+            {ICON_SIZE_PRESETS.map((size) => (
+              <button
+                key={size}
+                type="button"
+                className="PropsPanel-presetBtn"
+                aria-pressed={canvasWidth === size && canvasHeight === size}
+                onClick={() => setCanvasSize(size, size)}
+                title={`${size}×${size} icon artboard`}
+              >
+                {size}
+              </button>
+            ))}
           </div>
           <div className="PropsPanel-row">
             <label>Background</label>

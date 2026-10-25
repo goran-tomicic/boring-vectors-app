@@ -61,6 +61,32 @@
   padding: 4px 6px;
 }
 
+.PropsPanel-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.PropsPanel-presetBtn {
+  padding: 4px 2px;
+  font-size: 11px;
+  border-radius: 5px;
+  border: 1px solid var(--bv-border);
+  background: var(--bv-panel-raised);
+  color: var(--bv-text-dim);
+}
+
+.PropsPanel-presetBtn:hover {
+  color: var(--bv-text);
+}
+
+.PropsPanel-presetBtn[aria-pressed='true'] {
+  background: var(--bv-accent-bg);
+  border-color: var(--bv-accent-border);
+  color: var(--bv-accent-text);
+}
+
 .PropsPanel-info {
   display: flex;
   flex-direction: column;
