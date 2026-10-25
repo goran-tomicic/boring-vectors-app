@@ -34,4 +34,19 @@ test.describe('projects', () => {
     await page.waitForSelector('.TopBar-projectName')
     await expect(page.locator('.TopBar-projectName')).toHaveText('Renamed via TopBar')
   })
+
+  test('icon-size presets set the artboard to a square canvas in one click', async ({ page }) => {
+    const widthInput = page.locator('.PropsPanel-row input[type="number"]').first()
+    const heightInput = page.locator('.PropsPanel-row input[type="number"]').nth(1)
+    await expect(widthInput).toHaveValue('800')
+
+    await page.click('.PropsPanel-presetBtn:text("32")')
+    await expect(widthInput).toHaveValue('32')
+    await expect(heightInput).toHaveValue('32')
+    await expect(page.locator('.PropsPanel-presetBtn:text("32")')).toHaveAttribute('aria-pressed', 'true')
+
+    // Typing a custom size (not a preset) leaves every preset unselected.
+    await widthInput.fill('40')
+    await expect(page.locator('.PropsPanel-presetBtn:text("32")')).toHaveAttribute('aria-pressed', 'false')
+  })
 })
